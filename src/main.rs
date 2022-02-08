@@ -1,4 +1,4 @@
-use std::env;
+use std::{env};
 use std::fs::File;
 use std::io::Write;
 use std::process;
@@ -83,26 +83,49 @@ fn main() {
     }
 
     println!("[INFO] source_file: {:?}", source_file);
+
+    let tokens = lexer(source_file.as_str());
+    let program = create_program(tokens);
     if interp {
-        interpret(source_file.as_str());
+        interpret(&program);
     }
     if comp {
-        compile(source_file.as_str(), run_prog);
+        compile(&program, run_prog);
     }
 }
 
-fn interpret(file : &str) {
-    let program : Vec<Instruction> = vec![
-        Instruction::new(Opcode::OP_PUSH, vec![34]),
-        Instruction::new(Opcode::OP_PUSH, vec![35]),
-        Instruction::new(Opcode::OP_ADD, vec![]),
-        Instruction::new(Opcode::OP_DUMP, vec![]),
-        Instruction::new(Opcode::OP_PUSH, vec![430]),
-        Instruction::new(Opcode::OP_PUSH, vec![10]),
-        Instruction::new(Opcode::OP_MINUS, vec![]),
-        Instruction::new(Opcode::OP_DUMP, vec![]),
-    ];
+fn lexer(filename: &str) -> Vec<String> {
+    let source : String = std::fs::read_to_string(filename).unwrap();
+    let mut tokens : Vec<String> = Vec::new();
+    for line in source.lines() {
+        for tok in line.split_whitespace() {
+            tokens.push(String::from(tok));
+        }
+    }
+    tokens
+}
 
+fn create_program(tokens : Vec<String>) -> Vec<Instruction> {
+    let mut program : Vec<Instruction> = Vec::new();
+    for tok in tokens {
+        if tok == "+" {
+            program.push(Instruction::new(Opcode::OP_ADD, vec![]));
+        }
+        else if tok == "-" {
+            program.push(Instruction::new(Opcode::OP_MINUS, vec![]));
+        }
+        else if tok == "." {
+            program.push(Instruction::new(Opcode::OP_DUMP, vec![]));
+        }
+        else {
+            let immediate = tok.parse::<i64>().unwrap();
+            program.push(Instruction::new(Opcode::OP_PUSH, vec![immediate]));
+        }
+    }
+    program
+}
+
+fn interpret(program : &Vec<Instruction>) {
     let mut stack : Vec<i64> = Vec::new();
     for ins in program {
         match ins.opcode {
@@ -126,27 +149,15 @@ fn interpret(file : &str) {
     }
 }
 
-fn compile(file: &str, run_prog : bool) {
-    let program : Vec<Instruction> = vec![
-        Instruction::new(Opcode::OP_PUSH, vec![34]),
-        Instruction::new(Opcode::OP_PUSH, vec![35]),
-        Instruction::new(Opcode::OP_ADD, vec![]),
-        Instruction::new(Opcode::OP_DUMP, vec![]),
-        Instruction::new(Opcode::OP_PUSH, vec![430]),
-        Instruction::new(Opcode::OP_PUSH, vec![10]),
-        Instruction::new(Opcode::OP_MINUS, vec![]),
-        Instruction::new(Opcode::OP_DUMP, vec![]),
-    ];
-
+fn compile(program : &Vec<Instruction>, run_prog : bool) {
     codegen(program);
     build();
-
     if run_prog {
         execute();
     }
 }
 
-fn codegen(program: Vec<Instruction>) {
+fn codegen(program: &Vec<Instruction>) {
     let mut asm_file = File::create("out.asm")
         .expect("Could not open file");
     writeln!(&mut asm_file, "%define SYS_EXIT 60").unwrap();
