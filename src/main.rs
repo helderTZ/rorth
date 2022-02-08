@@ -201,7 +201,7 @@ fn codegen(program: Vec<Instruction>) {
                 writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
                 writeln!(&mut asm_file, "    sub rbx, rax").unwrap();
-                writeln!(&mut asm_file, "    push rax").unwrap();
+                writeln!(&mut asm_file, "    push rbx").unwrap();
             },
             Opcode::OP_DUMP => {
                 writeln!(&mut asm_file, "    pop rdi").unwrap();
