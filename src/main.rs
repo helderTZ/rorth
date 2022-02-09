@@ -10,8 +10,12 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[allow(non_camel_case_types)]
 enum Opcode {
     OP_PUSH,
+    OP_POP,
     OP_ADD,
-    OP_MINUS,
+    OP_SUB,
+    OP_MUL,
+    OP_DIV,
+    OP_DUP,
     OP_DUMP
 }
 
@@ -85,7 +89,7 @@ fn main() {
     println!("[INFO] source_file: {:?}", source_file);
 
     let tokens = lexer(source_file.as_str());
-    let program = create_program(tokens);
+    let program = parser(tokens);
     if interp {
         interpret(&program);
     }
@@ -99,23 +103,32 @@ fn lexer(filename: &str) -> Vec<String> {
     let mut tokens : Vec<String> = Vec::new();
     for line in source.lines() {
         for tok in line.split_whitespace() {
-            tokens.push(String::from(tok));
+            tokens.push(tok.to_string());
         }
     }
     tokens
 }
 
-fn create_program(tokens : Vec<String>) -> Vec<Instruction> {
+fn parser(tokens : Vec<String>) -> Vec<Instruction> {
     let mut program : Vec<Instruction> = Vec::new();
     for tok in tokens {
         if tok == "+" {
             program.push(Instruction::new(Opcode::OP_ADD, vec![]));
         }
         else if tok == "-" {
-            program.push(Instruction::new(Opcode::OP_MINUS, vec![]));
+            program.push(Instruction::new(Opcode::OP_SUB, vec![]));
+        }
+        else if tok == "*" {
+            program.push(Instruction::new(Opcode::OP_MUL, vec![]));
+        }
+        else if tok == "/" {
+            program.push(Instruction::new(Opcode::OP_DIV, vec![]));
         }
         else if tok == "." {
             program.push(Instruction::new(Opcode::OP_DUMP, vec![]));
+        }
+        else if tok == "dup" {
+            program.push(Instruction::new(Opcode::OP_DUP, vec![]));
         }
         else {
             let immediate = tok.parse::<i64>().unwrap();
@@ -132,15 +145,33 @@ fn interpret(program : &Vec<Instruction>) {
             Opcode::OP_PUSH => {
                 stack.push(ins.operands[0]);
             },
+            Opcode::OP_POP => {
+                let _ = stack.pop().unwrap();
+            }
             Opcode::OP_ADD => {
                 let a = stack.pop().unwrap();
                 let b = stack.pop().unwrap();
                 stack.push(a+b);
             },
-            Opcode::OP_MINUS => {
+            Opcode::OP_SUB => {
                 let a = stack.pop().unwrap();
                 let b = stack.pop().unwrap();
                 stack.push(b-a);
+            },
+            Opcode::OP_MUL => {
+                let a = stack.pop().unwrap();
+                let b = stack.pop().unwrap();
+                stack.push(a*b);
+            },
+            Opcode::OP_DIV => {
+                let a = stack.pop().unwrap();
+                let b = stack.pop().unwrap();
+                stack.push(b/a);
+            },
+            Opcode::OP_DUP => {
+                let a = stack.pop().unwrap();
+                stack.push(a);
+                stack.push(a);
             },
             Opcode::OP_DUMP => {
                 println!("{}", stack.pop().unwrap());
@@ -202,18 +233,39 @@ fn codegen(program: &Vec<Instruction>) {
             Opcode::OP_PUSH => {
                 writeln!(&mut asm_file, "    push {}", ins.operands[0]).unwrap();
             },
+            Opcode::OP_POP => {
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+            }
             Opcode::OP_ADD => {
                 writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
                 writeln!(&mut asm_file, "    add rax, rbx").unwrap();
                 writeln!(&mut asm_file, "    push rax").unwrap();
             },
-            Opcode::OP_MINUS => {
+            Opcode::OP_SUB => {
                 writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
                 writeln!(&mut asm_file, "    sub rbx, rax").unwrap();
                 writeln!(&mut asm_file, "    push rbx").unwrap();
             },
+            Opcode::OP_MUL => {
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+                writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    mul rbx").unwrap();
+                writeln!(&mut asm_file, "    push rax").unwrap();
+            },
+            Opcode::OP_DIV => {
+                writeln!(&mut asm_file, "    mov rdx, 0").unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+                writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    div rbx").unwrap();
+                writeln!(&mut asm_file, "    push rbx").unwrap();
+            },
+            Opcode::OP_DUP => {
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+                writeln!(&mut asm_file, "    push rax").unwrap();
+                writeln!(&mut asm_file, "    push rax").unwrap();
+            }
             Opcode::OP_DUMP => {
                 writeln!(&mut asm_file, "    pop rdi").unwrap();
                 writeln!(&mut asm_file, "    call dump").unwrap();
@@ -233,8 +285,8 @@ fn build() {
         .stderr(Stdio::inherit())
         .output()
         .unwrap();
-    println!("compiler output: {}", String::from_utf8(compiler_output.stdout).unwrap());
-    println!("compiler stderr: {}", String::from_utf8(compiler_output.stderr).unwrap());
+    println!("[INFO] nasm compiler output: {}", String::from_utf8(compiler_output.stdout).unwrap());
+    println!("[INFO] nasm compiler stderr: {}", String::from_utf8(compiler_output.stderr).unwrap());
 
     let linker_output = Command::new("ld")
         .args(["-o", "out", "out.o"])
@@ -242,8 +294,8 @@ fn build() {
         .stderr(Stdio::inherit())
         .output()
         .unwrap();
-    println!("linker output: {}", String::from_utf8(linker_output.stdout).unwrap());
-    println!("linker stderr: {}", String::from_utf8(linker_output.stderr).unwrap());
+    println!("[INFO] ld linker output: {}", String::from_utf8(linker_output.stdout).unwrap());
+    println!("[INFO] ld linker stderr: {}", String::from_utf8(linker_output.stderr).unwrap());
 }
 
 fn execute() {
@@ -252,6 +304,6 @@ fn execute() {
         .stderr(Stdio::inherit())
         .output()
         .unwrap();
-    println!("program output: {}", String::from_utf8(program_output.stdout).unwrap());
-    println!("program stderr: {}", String::from_utf8(program_output.stderr).unwrap());
+    println!("[INFO] out output: {}", String::from_utf8(program_output.stdout).unwrap());
+    println!("[INFO] out stderr: {}", String::from_utf8(program_output.stderr).unwrap());
 }
