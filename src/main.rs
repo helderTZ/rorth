@@ -8,25 +8,50 @@ const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[allow(non_camel_case_types)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 enum Opcode {
     OP_PUSH,
-    OP_POP,
     OP_ADD,
     OP_SUB,
     OP_MUL,
     OP_DIV,
+    OP_EQ,
+    OP_NE,
+    OP_GT,
+    OP_LT,
+    OP_GE,
+    OP_LE,
     OP_DUP,
-    OP_DUMP
+    OP_DUMP,
+    OP_IF,
+    OP_ELSE,
+    OP_END,
+    OP_WHILE,
+    OP_DO,
 }
 
+#[derive(Debug, Clone)]
 struct Instruction {
     opcode: Opcode,
-    operands: Vec<i64>
+    operands: Vec<i64>,
+    ip: usize
 }
 
 impl Instruction {
-    fn new(opcode: Opcode, operands: Vec<i64>) -> Self {
-        Instruction { opcode, operands }
+    fn new(opcode: Opcode, operands: Vec<i64>, ip: usize) -> Self {
+        Instruction { opcode, operands, ip}
+    }
+}
+
+struct Token {
+    tok: String,
+    row: usize,
+    col: usize
+}
+
+impl Token {
+    fn new(tok: String, row: usize, col: usize) -> Self {
+        Token { tok, row, col}
     }
 }
 
@@ -68,9 +93,11 @@ fn main() {
         }
         if arg == "-r" || arg == "--run" {
             run_prog = true;
+            continue;
         }
         if file_next {
             source_file = arg;
+            continue;
         }
     }
 
@@ -89,7 +116,8 @@ fn main() {
     println!("[INFO] source_file: {:?}", source_file);
 
     let tokens = lexer(source_file.as_str());
-    let program = parser(tokens);
+    let mut program = parser(&tokens);
+    parser_second_pass(source_file.as_str(), &tokens, &mut program);
     if interp {
         interpret(&program);
     }
@@ -98,56 +126,82 @@ fn main() {
     }
 }
 
-fn lexer(filename: &str) -> Vec<String> {
+fn lexer(filename: &str) -> Vec<Token> {
     let source : String = std::fs::read_to_string(filename).unwrap();
-    let mut tokens : Vec<String> = Vec::new();
-    for line in source.lines() {
-        for tok in line.split_whitespace() {
-            tokens.push(tok.to_string());
+    let mut tokens : Vec<Token> = Vec::new();
+    for (i, line) in source.lines().enumerate() {
+        for (j, tok) in line.split_whitespace().enumerate() {
+            tokens.push(Token::new(tok.to_string(), i, j));
         }
     }
     tokens
 }
 
-fn parser(tokens : Vec<String>) -> Vec<Instruction> {
+fn parser(tokens : &Vec<Token>) -> Vec<Instruction> {
     let mut program : Vec<Instruction> = Vec::new();
-    for tok in tokens {
-        if tok == "+" {
-            program.push(Instruction::new(Opcode::OP_ADD, vec![]));
-        }
-        else if tok == "-" {
-            program.push(Instruction::new(Opcode::OP_SUB, vec![]));
-        }
-        else if tok == "*" {
-            program.push(Instruction::new(Opcode::OP_MUL, vec![]));
-        }
-        else if tok == "/" {
-            program.push(Instruction::new(Opcode::OP_DIV, vec![]));
-        }
-        else if tok == "." {
-            program.push(Instruction::new(Opcode::OP_DUMP, vec![]));
-        }
-        else if tok == "dup" {
-            program.push(Instruction::new(Opcode::OP_DUP, vec![]));
-        }
+    for (ip, tok) in tokens.iter().enumerate() {
+        if tok.tok == "+"           { program.push(Instruction::new(Opcode::OP_ADD, vec![], ip)); }
+        else if tok.tok == "-"      { program.push(Instruction::new(Opcode::OP_SUB, vec![], ip)); }
+        else if tok.tok == "*"      { program.push(Instruction::new(Opcode::OP_MUL, vec![], ip)); }
+        else if tok.tok == "/"      { program.push(Instruction::new(Opcode::OP_DIV, vec![], ip)); }
+        else if tok.tok == "="      { program.push(Instruction::new(Opcode::OP_EQ, vec![], ip)); }
+        else if tok.tok == "!="     { program.push(Instruction::new(Opcode::OP_NE, vec![], ip)); }
+        else if tok.tok == ">"      { program.push(Instruction::new(Opcode::OP_GT, vec![], ip)); }
+        else if tok.tok == ">="     { program.push(Instruction::new(Opcode::OP_GE, vec![], ip)); }
+        else if tok.tok == "<"      { program.push(Instruction::new(Opcode::OP_LT, vec![], ip)); }
+        else if tok.tok == "<="     { program.push(Instruction::new(Opcode::OP_LE, vec![], ip)); }
+        else if tok.tok == "."      { program.push(Instruction::new(Opcode::OP_DUMP, vec![], ip)); }
+        else if tok.tok == "dup"    { program.push(Instruction::new(Opcode::OP_DUP, vec![], ip)); }
+        else if tok.tok == "if"     { program.push(Instruction::new(Opcode::OP_IF, vec![], ip)); }
+        else if tok.tok == "end"    { program.push(Instruction::new(Opcode::OP_END, vec![], ip)); }
+        else if tok.tok == "else"   { program.push(Instruction::new(Opcode::OP_ELSE, vec![], ip)); }
+        else if tok.tok == "while"  { program.push(Instruction::new(Opcode::OP_WHILE, vec![], ip)); }
+        else if tok.tok == "do"     { program.push(Instruction::new(Opcode::OP_DO, vec![], ip)); }
         else {
-            let immediate = tok.parse::<i64>().unwrap();
-            program.push(Instruction::new(Opcode::OP_PUSH, vec![immediate]));
+            let immediate = tok.tok.parse::<i64>().unwrap();
+            program.push(Instruction::new(Opcode::OP_PUSH, vec![immediate], ip));
         }
     }
     program
 }
 
+fn dump_bytecode(program : &Vec<Instruction>) {
+    println!("Bytecode:");
+    for ins in program {
+        println!("\t{:?}", ins);
+    }
+}
+
+fn parser_second_pass(source_file : &str, tokens : &Vec<Token>, program : &mut Vec<Instruction>) {
+    let mut stack : Vec<usize> = Vec::new();
+    for ip in 0..tokens.len() {
+        if program[ip].opcode == Opcode::OP_IF {
+            stack.push(program[ip].ip);
+        }
+        if program[ip].opcode == Opcode::OP_END {
+            if let Some(if_ip) = stack.pop() {
+                let end_ip = program[ip].ip.clone();
+                program[if_ip].operands.push(end_ip as i64);
+            }
+            else {
+                println!("[ERROR] {}:{}:{}: Found `end` without matching `if`",
+                    source_file, tokens[ip].row+1, tokens[ip].col+1);
+                dump_bytecode(program);
+                process::exit(1);
+            }
+        };
+    }
+}
+
 fn interpret(program : &Vec<Instruction>) {
     let mut stack : Vec<i64> = Vec::new();
-    for ins in program {
+    let mut ip = 0;
+    while ip < program.len() {
+        let ins = &program[ip];
         match ins.opcode {
             Opcode::OP_PUSH => {
                 stack.push(ins.operands[0]);
             },
-            Opcode::OP_POP => {
-                let _ = stack.pop().unwrap();
-            }
             Opcode::OP_ADD => {
                 let a = stack.pop().unwrap();
                 let b = stack.pop().unwrap();
@@ -168,6 +222,36 @@ fn interpret(program : &Vec<Instruction>) {
                 let b = stack.pop().unwrap();
                 stack.push(b/a);
             },
+            Opcode::OP_EQ => {
+                let a = stack.pop().unwrap();
+                let b = stack.pop().unwrap();
+                stack.push(((a==b) as i32) as i64);
+            },
+            Opcode::OP_NE => {
+                let a = stack.pop().unwrap();
+                let b = stack.pop().unwrap();
+                stack.push((a != b) as i64);
+            },
+            Opcode::OP_GT => {
+                let a = stack.pop().unwrap();
+                let b = stack.pop().unwrap();
+                stack.push((a > b) as i64);
+            },
+            Opcode::OP_GE => {
+                let a = stack.pop().unwrap();
+                let b = stack.pop().unwrap();
+                stack.push((a >= b) as i64);
+            },
+            Opcode::OP_LT => {
+                let a = stack.pop().unwrap();
+                let b = stack.pop().unwrap();
+                stack.push((a < b) as i64);
+            },
+            Opcode::OP_LE => {
+                let a = stack.pop().unwrap();
+                let b = stack.pop().unwrap();
+                stack.push((a <= b) as i64);
+            },
             Opcode::OP_DUP => {
                 let a = stack.pop().unwrap();
                 stack.push(a);
@@ -176,7 +260,24 @@ fn interpret(program : &Vec<Instruction>) {
             Opcode::OP_DUMP => {
                 println!("{}", stack.pop().unwrap());
             }
+            Opcode::OP_IF => {
+                let a = stack.pop().unwrap();
+                if a == 0 {
+                    ip = ins.operands[0] as usize;
+                }
+            },
+            Opcode::OP_ELSE => {
+                unimplemented!();
+            },
+            Opcode::OP_END => { },
+            Opcode::OP_WHILE => {
+                unimplemented!();
+            }
+            Opcode::OP_DO => {
+                unimplemented!();
+            }
         }
+        ip += 1;
     }
 }
 
@@ -192,6 +293,7 @@ fn codegen(program: &Vec<Instruction>) {
     let mut asm_file = File::create("out.asm")
         .expect("Could not open file");
     writeln!(&mut asm_file, "%define SYS_EXIT 60").unwrap();
+    writeln!(&mut asm_file, "%define SYS_WRITE 1").unwrap();
     writeln!(&mut asm_file, "section .text").unwrap();
     writeln!(&mut asm_file, "dump:").unwrap();
     writeln!(&mut asm_file, "    sub     rsp, 40").unwrap();
@@ -222,7 +324,7 @@ fn codegen(program: &Vec<Instruction>) {
     writeln!(&mut asm_file, "    mov     edi, 1").unwrap();
     writeln!(&mut asm_file, "    lea     rsi, [rsp+21+rdx]").unwrap();
     writeln!(&mut asm_file, "    mov     rdx, r9").unwrap();
-    writeln!(&mut asm_file, "    mov     rax, 1").unwrap();
+    writeln!(&mut asm_file, "    mov     rax, SYS_WRITE").unwrap();
     writeln!(&mut asm_file, "    syscall").unwrap();
     writeln!(&mut asm_file, "    add     rsp, 40").unwrap();
     writeln!(&mut asm_file, "    ret").unwrap();
@@ -233,9 +335,6 @@ fn codegen(program: &Vec<Instruction>) {
             Opcode::OP_PUSH => {
                 writeln!(&mut asm_file, "    push {}", ins.operands[0]).unwrap();
             },
-            Opcode::OP_POP => {
-                writeln!(&mut asm_file, "    pop rax").unwrap();
-            }
             Opcode::OP_ADD => {
                 writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
@@ -255,11 +354,31 @@ fn codegen(program: &Vec<Instruction>) {
                 writeln!(&mut asm_file, "    push rax").unwrap();
             },
             Opcode::OP_DIV => {
-                writeln!(&mut asm_file, "    mov rdx, 0").unwrap();
-                writeln!(&mut asm_file, "    pop rax").unwrap();
+                //FIXME: not working
+                writeln!(&mut asm_file, "    xor rdx, rdx").unwrap();
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    div rbx").unwrap();
-                writeln!(&mut asm_file, "    push rbx").unwrap();
+                writeln!(&mut asm_file, "    push rax").unwrap();
+                writeln!(&mut asm_file, "    push rdx").unwrap();
+            },
+            Opcode::OP_EQ => {
+                unimplemented!();
+            },
+            Opcode::OP_NE => {
+                unimplemented!();
+            },
+            Opcode::OP_GT => {
+                unimplemented!();
+            },
+            Opcode::OP_GE => {
+                unimplemented!();
+            },
+            Opcode::OP_LT => {
+                unimplemented!();
+            },
+            Opcode::OP_LE => {
+                unimplemented!();
             },
             Opcode::OP_DUP => {
                 writeln!(&mut asm_file, "    pop rax").unwrap();
@@ -269,6 +388,21 @@ fn codegen(program: &Vec<Instruction>) {
             Opcode::OP_DUMP => {
                 writeln!(&mut asm_file, "    pop rdi").unwrap();
                 writeln!(&mut asm_file, "    call dump").unwrap();
+            },
+            Opcode::OP_IF => {
+                unimplemented!();
+            },
+            Opcode::OP_ELSE => {
+                unimplemented!();
+            },
+            Opcode::OP_END => {
+                unimplemented!();
+            },
+            Opcode::OP_WHILE => {
+                unimplemented!();
+            },
+            Opcode::OP_DO => {
+                unimplemented!();
             }
         }
     }
