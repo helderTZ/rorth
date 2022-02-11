@@ -8,7 +8,7 @@ const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[allow(non_camel_case_types)]
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 enum Opcode {
     OP_PUSH,
     OP_ADD,
@@ -24,12 +24,13 @@ enum Opcode {
     OP_DUP,
     OP_DUMP,
     OP_IF,
+    OP_ELSE,
     OP_END,
     OP_WHILE,
     OP_DO,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Instruction {
     opcode: Opcode,
     operands: Vec<i64>,
@@ -51,20 +52,6 @@ struct Token {
 impl Token {
     fn new(tok: String, row: usize, col: usize) -> Self {
         Token { tok, row, col}
-    }
-}
-
-struct Program {
-    instructions : Vec<Instruction>,
-}
-
-impl Program {
-    fn new() -> Self {
-        Program {instructions : Vec::new() }
-    }
-
-    fn push_operand_at(&mut self, ip : usize, operand : usize) {
-        instructions[ip].operands.push(operand);
     }
 }
 
@@ -153,48 +140,23 @@ fn lexer(filename: &str) -> Vec<Token> {
 fn parser(tokens : &Vec<Token>) -> Vec<Instruction> {
     let mut program : Vec<Instruction> = Vec::new();
     for (ip, tok) in tokens.iter().enumerate() {
-        if tok.tok == "+" {
-            program.push(Instruction::new(Opcode::OP_ADD, vec![], ip));
-        }
-        else if tok.tok == "-" {
-            program.push(Instruction::new(Opcode::OP_SUB, vec![], ip));
-        }
-        else if tok.tok == "*" {
-            program.push(Instruction::new(Opcode::OP_MUL, vec![], ip));
-        }
-        else if tok.tok == "/" {
-            program.push(Instruction::new(Opcode::OP_DIV, vec![], ip));
-        }
-        else if tok.tok == "=" {
-            program.push(Instruction::new(Opcode::OP_EQ, vec![], ip));
-        }
-        else if tok.tok == "!=" {
-            program.push(Instruction::new(Opcode::OP_NE, vec![], ip));
-        }
-        else if tok.tok == ">" {
-            program.push(Instruction::new(Opcode::OP_GT, vec![], ip));
-        }
-        else if tok.tok == ">=" {
-            program.push(Instruction::new(Opcode::OP_GE, vec![], ip));
-        }
-        else if tok.tok == "<" {
-            program.push(Instruction::new(Opcode::OP_LT, vec![], ip));
-        }
-        else if tok.tok == "<=" {
-            program.push(Instruction::new(Opcode::OP_LE, vec![], ip));
-        }
-        else if tok.tok == "." {
-            program.push(Instruction::new(Opcode::OP_DUMP, vec![], ip));
-        }
-        else if tok.tok == "dup" {
-            program.push(Instruction::new(Opcode::OP_DUP, vec![], ip));
-        }
-        else if tok.tok == "if" {
-            program.push(Instruction::new(Opcode::OP_IF, vec![], ip));
-        }
-        else if tok.tok == "end" {
-            program.push(Instruction::new(Opcode::OP_END, vec![], ip));
-        }
+        if tok.tok == "+"           { program.push(Instruction::new(Opcode::OP_ADD, vec![], ip)); }
+        else if tok.tok == "-"      { program.push(Instruction::new(Opcode::OP_SUB, vec![], ip)); }
+        else if tok.tok == "*"      { program.push(Instruction::new(Opcode::OP_MUL, vec![], ip)); }
+        else if tok.tok == "/"      { program.push(Instruction::new(Opcode::OP_DIV, vec![], ip)); }
+        else if tok.tok == "="      { program.push(Instruction::new(Opcode::OP_EQ, vec![], ip)); }
+        else if tok.tok == "!="     { program.push(Instruction::new(Opcode::OP_NE, vec![], ip)); }
+        else if tok.tok == ">"      { program.push(Instruction::new(Opcode::OP_GT, vec![], ip)); }
+        else if tok.tok == ">="     { program.push(Instruction::new(Opcode::OP_GE, vec![], ip)); }
+        else if tok.tok == "<"      { program.push(Instruction::new(Opcode::OP_LT, vec![], ip)); }
+        else if tok.tok == "<="     { program.push(Instruction::new(Opcode::OP_LE, vec![], ip)); }
+        else if tok.tok == "."      { program.push(Instruction::new(Opcode::OP_DUMP, vec![], ip)); }
+        else if tok.tok == "dup"    { program.push(Instruction::new(Opcode::OP_DUP, vec![], ip)); }
+        else if tok.tok == "if"     { program.push(Instruction::new(Opcode::OP_IF, vec![], ip)); }
+        else if tok.tok == "end"    { program.push(Instruction::new(Opcode::OP_END, vec![], ip)); }
+        else if tok.tok == "else"   { program.push(Instruction::new(Opcode::OP_ELSE, vec![], ip)); }
+        else if tok.tok == "while"  { program.push(Instruction::new(Opcode::OP_WHILE, vec![], ip)); }
+        else if tok.tok == "do"     { program.push(Instruction::new(Opcode::OP_DO, vec![], ip)); }
         else {
             let immediate = tok.tok.parse::<i64>().unwrap();
             program.push(Instruction::new(Opcode::OP_PUSH, vec![immediate], ip));
@@ -212,26 +174,30 @@ fn dump_bytecode(program : &Vec<Instruction>) {
 
 fn parser_second_pass(source_file : &str, tokens : &Vec<Token>, program : &mut Vec<Instruction>) {
     let mut stack : Vec<usize> = Vec::new();
-    for (ip, (tok, ins)) in tokens.iter().zip(program.iter_mut()).enumerate() {
-        if ins.opcode == Opcode::OP_IF {
-            stack.push(ins.ip);
+    for ip in 0..tokens.len() {
+        if program[ip].opcode == Opcode::OP_IF {
+            stack.push(program[ip].ip);
         }
-        if ins.opcode == Opcode::OP_END {
+        if program[ip].opcode == Opcode::OP_END {
             if let Some(if_ip) = stack.pop() {
-                program[if_ip].operands.push(ins.ip as i64);
+                let end_ip = program[ip].ip.clone();
+                program[if_ip].operands.push(end_ip as i64);
             }
             else {
-                println!("[ERROR] {}:{}:{}: Found `end` without matching `if`", source_file, tok.row+1, tok.col+1);
+                println!("[ERROR] {}:{}:{}: Found `end` without matching `if`",
+                    source_file, tokens[ip].row+1, tokens[ip].col+1);
                 dump_bytecode(program);
                 process::exit(1);
             }
-        }
+        };
     }
 }
 
 fn interpret(program : &Vec<Instruction>) {
     let mut stack : Vec<i64> = Vec::new();
-    for ins in program {
+    let mut ip = 0;
+    while ip < program.len() {
+        let ins = &program[ip];
         match ins.opcode {
             Opcode::OP_PUSH => {
                 stack.push(ins.operands[0]);
@@ -259,7 +225,7 @@ fn interpret(program : &Vec<Instruction>) {
             Opcode::OP_EQ => {
                 let a = stack.pop().unwrap();
                 let b = stack.pop().unwrap();
-                stack.push((a == b) as i64);
+                stack.push(((a==b) as i32) as i64);
             },
             Opcode::OP_NE => {
                 let a = stack.pop().unwrap();
@@ -295,12 +261,15 @@ fn interpret(program : &Vec<Instruction>) {
                 println!("{}", stack.pop().unwrap());
             }
             Opcode::OP_IF => {
-                let a =stack.pop().unwrap();
+                let a = stack.pop().unwrap();
+                if a == 0 {
+                    ip = ins.operands[0] as usize;
+                }
+            },
+            Opcode::OP_ELSE => {
                 unimplemented!();
             },
-            Opcode::OP_END => {
-                unimplemented!();
-            },
+            Opcode::OP_END => { },
             Opcode::OP_WHILE => {
                 unimplemented!();
             }
@@ -308,6 +277,7 @@ fn interpret(program : &Vec<Instruction>) {
                 unimplemented!();
             }
         }
+        ip += 1;
     }
 }
 
@@ -420,6 +390,9 @@ fn codegen(program: &Vec<Instruction>) {
                 writeln!(&mut asm_file, "    call dump").unwrap();
             },
             Opcode::OP_IF => {
+                unimplemented!();
+            },
+            Opcode::OP_ELSE => {
                 unimplemented!();
             },
             Opcode::OP_END => {
