@@ -165,31 +165,60 @@ fn parser(tokens : &Vec<Token>) -> Vec<Instruction> {
     program
 }
 
-fn dump_bytecode(program : &Vec<Instruction>) {
+fn dump_bytecode(program : &Vec<Instruction>, ip : Option<usize>) {
     println!("Bytecode:");
-    for ins in program {
-        println!("\t{:?}", ins);
+    let ip = ip.unwrap_or(usize::MAX);
+    for (i, ins) in program.iter().enumerate() {
+        if ip == i {
+            println!("-->\t{} {:?} <-- ip {}", i, ins, ip);
+        } else {
+            println!("\t{} {:?}", i, ins);
+        }
     }
+}
+
+fn dump_stack(stack: &Vec<i64>) {
+    print!("Stack:");
+    for (i, val) in stack.iter().enumerate() {
+        print!("({}, {}) ", i, val);
+    }
+    println!();
 }
 
 fn parser_second_pass(source_file : &str, tokens : &Vec<Token>, program : &mut Vec<Instruction>) {
     let mut stack : Vec<usize> = Vec::new();
+    let mut elses : Vec<usize> = Vec::new();
     for ip in 0..tokens.len() {
         if program[ip].opcode == Opcode::OP_IF {
             stack.push(program[ip].ip);
+        }
+        if program[ip].opcode == Opcode::OP_ELSE {
+            if let Some(if_ip) = stack.pop() {
+                let else_ip = program[ip].ip.clone();
+                program[if_ip].operands.push(else_ip as i64);
+                stack.push(if_ip);
+                elses.push(else_ip);
+            } else {
+                println!("[ERROR] {}:{}:{}: Found `else` without matching `if`",
+                    source_file, tokens[ip].row+1, tokens[ip].col+1);
+                dump_bytecode(program, None);
+                process::exit(1);
+            }
         }
         if program[ip].opcode == Opcode::OP_END {
             if let Some(if_ip) = stack.pop() {
                 let end_ip = program[ip].ip.clone();
                 program[if_ip].operands.push(end_ip as i64);
-            }
-            else {
-                println!("[ERROR] {}:{}:{}: Found `end` without matching `if`",
+                if let Some(else_ip) = elses.pop() {
+                    program[else_ip].operands.push(end_ip as i64);
+                }
+            } else {
+                println!("[ERROR] {}:{}:{}: Found `end` without matching `if-else`",
                     source_file, tokens[ip].row+1, tokens[ip].col+1);
-                dump_bytecode(program);
+                dump_bytecode(program, None);
                 process::exit(1);
             }
-        };
+        }
     }
 }
 
@@ -258,7 +287,13 @@ fn interpret(program : &Vec<Instruction>) {
                 stack.push(a);
             },
             Opcode::OP_DUMP => {
-                println!("{}", stack.pop().unwrap());
+                if let Some(a) = stack.pop() {
+                    println!("{}", a);
+                } else {
+                    dump_bytecode(&program, Some(ip));
+                    dump_stack(&stack);
+                    process::exit(1);
+                }
             }
             Opcode::OP_IF => {
                 let a = stack.pop().unwrap();
@@ -267,7 +302,7 @@ fn interpret(program : &Vec<Instruction>) {
                 }
             },
             Opcode::OP_ELSE => {
-                unimplemented!();
+                ip = ins.operands[0] as usize;
             },
             Opcode::OP_END => { },
             Opcode::OP_WHILE => {
@@ -277,6 +312,8 @@ fn interpret(program : &Vec<Instruction>) {
                 unimplemented!();
             }
         }
+        // print!("{} ", ip);
+        // dump_stack(&stack);
         ip += 1;
     }
 }
