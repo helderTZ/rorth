@@ -172,6 +172,22 @@ fn lexer(filename: &str) -> Vec<Token> {
     tokens
 }
 
+
+/**
+ * +---------------------+       +-------------------+
+ * |        IF           |       |     WHILE    <-+  |
+ * |    <condition> --+  |       |  <condition>   |  |
+ * |        .     |   |  |       |      DO        |  |
+ * |        .     |   |  |       |      .         |  |
+ * |       ELSE <-+   |  |       |      .         |  |
+ * |        .         |  |       |      .         |  |
+ * |        .         |  |       |      .         |  |
+ * |        .         |  |       |      .         |  |
+ * |        END       |  |       |      END ------+  |
+ * |           <------+  |       |                   |
+ * |                     |       |                   |
+ * +---------------------+       +-------------------+
+ */
 fn parser(source_file : &str, tokens : &Vec<Token>) -> Vec<Instruction> {
     let mut program : Vec<Instruction> = Vec::new();
     let mut crossref : Vec<usize> = Vec::new();
