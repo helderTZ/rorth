@@ -43,6 +43,7 @@ impl Instruction {
     }
 }
 
+#[derive(Debug)]
 struct Token {
     tok: String,
     row: usize,
@@ -116,14 +117,48 @@ fn main() {
     println!("[INFO] source_file: {:?}", source_file);
 
     let tokens = lexer(source_file.as_str());
-    let mut program = parser(&tokens);
-    parser_second_pass(source_file.as_str(), &tokens, &mut program);
+    let program = parser(&source_file, &tokens);
+    // parser_second_pass(source_file.as_str(), &tokens, &mut program);
     if interp {
         interpret(&program);
     }
     if comp {
         compile(&program, run_prog);
     }
+}
+
+// debug function
+fn _dump_tokens(tokens : &Vec<Token>) {
+    println!("Tokens:");
+    for (i, tok) in tokens.iter().enumerate() {
+        println!("\t{} {:?}", i, tok);
+    }
+}
+
+// debug function
+fn _dump_bytecode(program : &Vec<Instruction>) {
+    println!("Bytecode:");
+    for (i, ins) in program.iter().enumerate() {
+        println!("\t{} {:?}", i, ins);
+    }
+}
+
+// debug function
+fn _dump_crossref(stack: &Vec<usize>) {
+    print!("Crossref:");
+    for (i, val) in stack.iter().enumerate() {
+        print!("({}, {}) ", i, val);
+    }
+    println!();
+}
+
+// debug function
+fn _dump_stack(stack: &Vec<i64>) {
+    print!("Stack:");
+    for (i, val) in stack.iter().enumerate() {
+        print!("({}, {}) ", i, val);
+    }
+    println!();
 }
 
 fn lexer(filename: &str) -> Vec<Token> {
@@ -137,8 +172,9 @@ fn lexer(filename: &str) -> Vec<Token> {
     tokens
 }
 
-fn parser(tokens : &Vec<Token>) -> Vec<Instruction> {
+fn parser(source_file : &str, tokens : &Vec<Token>) -> Vec<Instruction> {
     let mut program : Vec<Instruction> = Vec::new();
+    let mut crossref : Vec<usize> = Vec::new();
     for (ip, tok) in tokens.iter().enumerate() {
         if tok.tok == "+"           { program.push(Instruction::new(Opcode::OP_ADD, vec![], ip)); }
         else if tok.tok == "-"      { program.push(Instruction::new(Opcode::OP_SUB, vec![], ip)); }
@@ -152,11 +188,66 @@ fn parser(tokens : &Vec<Token>) -> Vec<Instruction> {
         else if tok.tok == "<="     { program.push(Instruction::new(Opcode::OP_LE, vec![], ip)); }
         else if tok.tok == "."      { program.push(Instruction::new(Opcode::OP_DUMP, vec![], ip)); }
         else if tok.tok == "dup"    { program.push(Instruction::new(Opcode::OP_DUP, vec![], ip)); }
-        else if tok.tok == "if"     { program.push(Instruction::new(Opcode::OP_IF, vec![], ip)); }
-        else if tok.tok == "end"    { program.push(Instruction::new(Opcode::OP_END, vec![], ip)); }
-        else if tok.tok == "else"   { program.push(Instruction::new(Opcode::OP_ELSE, vec![], ip)); }
-        else if tok.tok == "while"  { program.push(Instruction::new(Opcode::OP_WHILE, vec![], ip)); }
-        else if tok.tok == "do"     { program.push(Instruction::new(Opcode::OP_DO, vec![], ip)); }
+        else if tok.tok == "if" {
+            program.push(Instruction::new(Opcode::OP_IF, vec![], ip));
+            crossref.push(ip);
+        }
+        else if tok.tok == "else" {
+            program.push(Instruction::new(Opcode::OP_ELSE, vec![], ip));
+            if let Some(if_ip) = crossref.pop() {
+                program[if_ip].operands.push(ip as i64);
+                crossref.push(ip);
+            } else {
+                println!("[ERROR] {}:{}:{}: Found `else` without matching `if` at ip {}",
+                    source_file, tokens[ip].row+1, tokens[ip].col+1, ip);
+                _dump_bytecode(&program);
+                _dump_crossref(&crossref);
+                process::exit(1);
+            }
+        }
+        else if tok.tok == "while" {
+            program.push(Instruction::new(Opcode::OP_WHILE, vec![], ip));
+            crossref.push(program[ip].ip);
+        }
+        else if tok.tok == "do" {
+            program.push(Instruction::new(Opcode::OP_DO, vec![], ip));
+            crossref.push(program[ip].ip);
+        }
+        //TODO: support nested whiles
+        else if tok.tok == "end" {
+            program.push(Instruction::new(Opcode::OP_END, vec![], ip));
+            if let Some(ifelsedo_ip) = crossref.pop() {
+                program[ifelsedo_ip].operands.push(ip as i64);
+                if program[ifelsedo_ip].opcode == Opcode::OP_WHILE {
+                    println!("[ERROR] {}:{}:{}: Found `while` without matching `do` at ip {}",
+                        source_file, tokens[ip].row+1, tokens[ip].col+1, ip);
+                    _dump_bytecode(&program);
+                    _dump_crossref(&crossref);
+                    process::exit(1);
+                }
+                if program[ifelsedo_ip].opcode == Opcode::OP_DO {
+                    program[ifelsedo_ip].operands.push(ip as i64);
+                    if let Some(ifelsedo_ip) = crossref.pop() {
+                        if program[ifelsedo_ip].opcode == Opcode::OP_WHILE {
+                            program[ip].operands.push(ifelsedo_ip as i64);
+                        }
+                        else {
+                            println!("[ERROR] {}:{}:{}: Found `do` without matching `while` at ip {}",
+                                source_file, tokens[ip].row+1, tokens[ip].col+1, ip);
+                            _dump_bytecode(&program);
+                            _dump_crossref(&crossref);
+                            process::exit(1);
+                        }
+                    }
+                }
+            } else {
+                println!("[ERROR] {}:{}:{}: Found `end` without matching `if-else` or `while-do` at ip {}",
+                    source_file, tokens[ip].row+1, tokens[ip].col+1, ip);
+                _dump_bytecode(&program);
+                _dump_crossref(&crossref);
+                process::exit(1);
+            }
+        }
         else {
             let immediate = tok.tok.parse::<i64>().unwrap();
             program.push(Instruction::new(Opcode::OP_PUSH, vec![immediate], ip));
@@ -165,64 +256,8 @@ fn parser(tokens : &Vec<Token>) -> Vec<Instruction> {
     program
 }
 
-fn dump_bytecode(program : &Vec<Instruction>, ip : Option<usize>) {
-    println!("Bytecode:");
-    let ip = ip.unwrap_or(usize::MAX);
-    for (i, ins) in program.iter().enumerate() {
-        if ip == i {
-            println!("-->\t{} {:?} <-- ip {}", i, ins, ip);
-        } else {
-            println!("\t{} {:?}", i, ins);
-        }
-    }
-}
-
-fn dump_stack(stack: &Vec<i64>) {
-    print!("Stack:");
-    for (i, val) in stack.iter().enumerate() {
-        print!("({}, {}) ", i, val);
-    }
-    println!();
-}
-
-fn parser_second_pass(source_file : &str, tokens : &Vec<Token>, program : &mut Vec<Instruction>) {
-    let mut stack : Vec<usize> = Vec::new();
-    let mut elses : Vec<usize> = Vec::new();
-    for ip in 0..tokens.len() {
-        if program[ip].opcode == Opcode::OP_IF {
-            stack.push(program[ip].ip);
-        }
-        if program[ip].opcode == Opcode::OP_ELSE {
-            if let Some(if_ip) = stack.pop() {
-                let else_ip = program[ip].ip.clone();
-                program[if_ip].operands.push(else_ip as i64);
-                stack.push(if_ip);
-                elses.push(else_ip);
-            } else {
-                println!("[ERROR] {}:{}:{}: Found `else` without matching `if`",
-                    source_file, tokens[ip].row+1, tokens[ip].col+1);
-                dump_bytecode(program, None);
-                process::exit(1);
-            }
-        }
-        if program[ip].opcode == Opcode::OP_END {
-            if let Some(if_ip) = stack.pop() {
-                let end_ip = program[ip].ip.clone();
-                program[if_ip].operands.push(end_ip as i64);
-                if let Some(else_ip) = elses.pop() {
-                    program[else_ip].operands.push(end_ip as i64);
-                }
-            } else {
-                println!("[ERROR] {}:{}:{}: Found `end` without matching `if-else`",
-                    source_file, tokens[ip].row+1, tokens[ip].col+1);
-                dump_bytecode(program, None);
-                process::exit(1);
-            }
-        }
-    }
-}
-
 fn interpret(program : &Vec<Instruction>) {
+    // _dump_bytecode(program);
     let mut stack : Vec<i64> = Vec::new();
     let mut ip = 0;
     while ip < program.len() {
@@ -264,22 +299,22 @@ fn interpret(program : &Vec<Instruction>) {
             Opcode::OP_GT => {
                 let a = stack.pop().unwrap();
                 let b = stack.pop().unwrap();
-                stack.push((a > b) as i64);
+                stack.push((b > a) as i64);
             },
             Opcode::OP_GE => {
                 let a = stack.pop().unwrap();
                 let b = stack.pop().unwrap();
-                stack.push((a >= b) as i64);
+                stack.push((b >= a) as i64);
             },
             Opcode::OP_LT => {
                 let a = stack.pop().unwrap();
                 let b = stack.pop().unwrap();
-                stack.push((a < b) as i64);
+                stack.push((b < a) as i64);
             },
             Opcode::OP_LE => {
                 let a = stack.pop().unwrap();
                 let b = stack.pop().unwrap();
-                stack.push((a <= b) as i64);
+                stack.push((b <= a) as i64);
             },
             Opcode::OP_DUP => {
                 let a = stack.pop().unwrap();
@@ -290,8 +325,8 @@ fn interpret(program : &Vec<Instruction>) {
                 if let Some(a) = stack.pop() {
                     println!("{}", a);
                 } else {
-                    dump_bytecode(&program, Some(ip));
-                    dump_stack(&stack);
+                    _dump_bytecode(&program);
+                    _dump_stack(&stack);
                     process::exit(1);
                 }
             }
@@ -304,16 +339,23 @@ fn interpret(program : &Vec<Instruction>) {
             Opcode::OP_ELSE => {
                 ip = ins.operands[0] as usize;
             },
-            Opcode::OP_END => { },
-            Opcode::OP_WHILE => {
-                unimplemented!();
-            }
+            Opcode::OP_END => {
+                // if has one operand, it points to while
+                // if has no operands, it ends an if
+                if ins.operands.len() == 1 {
+                    ip = ins.operands[0] as usize;
+                }
+            },
+            Opcode::OP_WHILE => { },
             Opcode::OP_DO => {
-                unimplemented!();
+                let a = stack.pop().unwrap();
+                if a == 0 {
+                    ip = ins.operands[0] as usize;
+                }
             }
         }
         // print!("{} ", ip);
-        // dump_stack(&stack);
+        // _dump_stack(&stack);
         ip += 1;
     }
 }
