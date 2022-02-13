@@ -161,11 +161,13 @@ fn _dump_stack(stack: &Vec<i64>) {
     println!();
 }
 
+//FIXME: col is wrong, it should be the char index, not the word index
 fn lexer(filename: &str) -> Vec<Token> {
     let source : String = std::fs::read_to_string(filename).unwrap();
     let mut tokens : Vec<Token> = Vec::new();
     for (i, line) in source.lines().enumerate() {
-        for (j, tok) in line.split_whitespace().enumerate() {
+        let filtered_line = line.split("//").next().unwrap();
+        for (j, tok) in filtered_line.split_whitespace().enumerate() {
             tokens.push(Token::new(tok.to_string(), i, j));
         }
     }
