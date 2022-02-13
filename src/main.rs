@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::Write;
 use std::process;
 use std::process::{Command, Stdio};
+use std::io;
 
 const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -118,9 +119,8 @@ fn main() {
 
     let tokens = lexer(source_file.as_str());
     let program = parser(&source_file, &tokens);
-    // parser_second_pass(source_file.as_str(), &tokens, &mut program);
     if interp {
-        interpret(&program);
+        interpret(&program, &mut io::stdout());
     }
     if comp {
         compile(&program, run_prog);
@@ -274,7 +274,7 @@ fn parser(source_file : &str, tokens : &Vec<Token>) -> Vec<Instruction> {
     program
 }
 
-fn interpret(program : &Vec<Instruction>) {
+fn interpret<W: Write>(program : &Vec<Instruction>, stdout : &mut W) {
     // _dump_bytecode(program);
     let mut stack : Vec<i64> = Vec::new();
     let mut ip = 0;
@@ -341,7 +341,7 @@ fn interpret(program : &Vec<Instruction>) {
             },
             Opcode::OP_DUMP => {
                 if let Some(a) = stack.pop() {
-                    println!("{}", a);
+                    writeln!(stdout, "{}", a).unwrap();
                 } else {
                     _dump_bytecode(&program);
                     _dump_stack(&stack);
@@ -537,4 +537,63 @@ fn execute() {
         .unwrap();
     println!("[INFO] out output: {}", String::from_utf8(program_output.stdout).unwrap());
     println!("[INFO] out stderr: {}", String::from_utf8(program_output.stderr).unwrap());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_push() {
+        let tokens : Vec<Token> = vec![Token::new(String::from("2"), 0, 0)];
+        let program = parser("", &tokens);
+        assert_eq!(program[0].opcode, Opcode::OP_PUSH);
+    }
+    #[test]
+    
+    fn parse_add() {
+        let tokens : Vec<Token> = vec![Token::new(String::from("+"), 0, 0)];
+        let program = parser("", &tokens);
+        assert_eq!(program[0].opcode, Opcode::OP_ADD);
+    }
+
+    #[test]
+    fn run_arithmetic() {
+        let source_file = "tests/arithmetic.rorth";
+        let tokens = lexer(&source_file);
+        let program = parser(&source_file, &tokens);
+        let mut stdout = Vec::new();
+        interpret(&program, &mut stdout);
+        assert_eq!(stdout, b"69\n420\n4\n5\n");
+    }
+
+    #[test]
+    fn run_comparisons() {
+        let source_file = "tests/comparisons.rorth";
+        let tokens = lexer(&source_file);
+        let program = parser(&source_file, &tokens);
+        let mut stdout = Vec::new();
+        interpret(&program, &mut stdout);
+        assert_eq!(stdout, b"1\n0\n0\n1\n1\n0\n0\n1\n");
+    }
+
+    #[test]
+    fn run_if() {
+        let source_file = "tests/if.rorth";
+        let tokens = lexer(&source_file);
+        let program = parser(&source_file, &tokens);
+        let mut stdout = Vec::new();
+        interpret(&program, &mut stdout);
+        assert_eq!(stdout, b"1\n42\n42\n0\n42\n");
+    }
+
+    #[test]
+    fn run_while() {
+        let source_file = "tests/while.rorth";
+        let tokens = lexer(&source_file);
+        let program = parser(&source_file, &tokens);
+        let mut stdout = Vec::new();
+        interpret(&program, &mut stdout);
+        assert_eq!(stdout, b"10\n9\n8\n7\n6\n5\n4\n3\n2\n1\n420\n");
+    }
 }
