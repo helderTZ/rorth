@@ -446,21 +446,25 @@ fn codegen(program: &Vec<Instruction>) {
     for ins in program {
         match ins.opcode {
             Opcode::OP_PUSH => {
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_PUSH", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    push {}", ins.operands[0]).unwrap();
             },
             Opcode::OP_ADD => {
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_ADD", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
                 writeln!(&mut asm_file, "    add rax, rbx").unwrap();
                 writeln!(&mut asm_file, "    push rax").unwrap();
             },
             Opcode::OP_SUB => {
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_SUB", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
                 writeln!(&mut asm_file, "    sub rbx, rax").unwrap();
                 writeln!(&mut asm_file, "    push rbx").unwrap();
             },
             Opcode::OP_MUL => {
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_MUL", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
                 writeln!(&mut asm_file, "    mul rbx").unwrap();
@@ -468,6 +472,7 @@ fn codegen(program: &Vec<Instruction>) {
             },
             Opcode::OP_DIV => {
                 //FIXME: not working
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_DIV", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    xor rdx, rdx").unwrap();
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
                 writeln!(&mut asm_file, "    pop rax").unwrap();
@@ -476,10 +481,12 @@ fn codegen(program: &Vec<Instruction>) {
                 writeln!(&mut asm_file, "    push rdx").unwrap();
             },
             Opcode::OP_NOT => {
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_NOT", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    not rax").unwrap();
             },
             Opcode::OP_EQ => {
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_EQ", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
                 writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
                 writeln!(&mut asm_file, "    pop rax").unwrap();
@@ -488,6 +495,7 @@ fn codegen(program: &Vec<Instruction>) {
                 writeln!(&mut asm_file, "    cmove rcx, rdx").unwrap();
             },
             Opcode::OP_NE => {
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_NE", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
                 writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
                 writeln!(&mut asm_file, "    pop rax").unwrap();
@@ -496,6 +504,7 @@ fn codegen(program: &Vec<Instruction>) {
                 writeln!(&mut asm_file, "    cmovne rcx, rdx").unwrap();
             },
             Opcode::OP_GT => {
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_GT", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
                 writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
                 writeln!(&mut asm_file, "    pop rax").unwrap();
@@ -504,6 +513,7 @@ fn codegen(program: &Vec<Instruction>) {
                 writeln!(&mut asm_file, "    cmovg rcx, rdx").unwrap();
             },
             Opcode::OP_GE => {
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_GE", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
                 writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
                 writeln!(&mut asm_file, "    pop rax").unwrap();
@@ -512,6 +522,7 @@ fn codegen(program: &Vec<Instruction>) {
                 writeln!(&mut asm_file, "    cmovge rcx, rdx").unwrap();
             },
             Opcode::OP_LT => {
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_LT", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
                 writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
                 writeln!(&mut asm_file, "    pop rax").unwrap();
@@ -520,6 +531,7 @@ fn codegen(program: &Vec<Instruction>) {
                 writeln!(&mut asm_file, "    cmovl rcx, rdx").unwrap();
             },
             Opcode::OP_LE => {
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_LE", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
                 writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
                 writeln!(&mut asm_file, "    pop rax").unwrap();
@@ -528,11 +540,13 @@ fn codegen(program: &Vec<Instruction>) {
                 writeln!(&mut asm_file, "    cmovle rcx, rdx").unwrap();
             },
             Opcode::OP_DUP => {
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_DUP", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    push rax").unwrap();
                 writeln!(&mut asm_file, "    push rax").unwrap();
             }
             Opcode::OP_DUMP => {
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_DUMP", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    pop rdi").unwrap();
                 writeln!(&mut asm_file, "    call dump").unwrap();
             },
@@ -652,7 +666,7 @@ mod tests {
         assert_eq!(stdout, b"10\n9\n8\n7\n6\n5\n4\n3\n2\n1\n420\n");
     }
 
-    #[test]
+    // #[test]
     // fn compile_comparisons() {
     //     let source_file = "tests/comparisons.rorth";
     //     let tokens = lexer(&source_file);
