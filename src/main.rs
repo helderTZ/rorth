@@ -510,33 +510,27 @@ fn codegen(program: &Vec<Instruction>) {
 }
 
 fn build() {
-    let compiler_output = Command::new("nasm")
+    let _compiler_output = Command::new("nasm")
         .args(["-felf64", "out.asm"])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .output()
         .unwrap();
-    println!("[INFO] nasm compiler output: {}", String::from_utf8(compiler_output.stdout).unwrap());
-    println!("[INFO] nasm compiler stderr: {}", String::from_utf8(compiler_output.stderr).unwrap());
 
-    let linker_output = Command::new("ld")
+    let _linker_output = Command::new("ld")
         .args(["-o", "out", "out.o"])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .output()
         .unwrap();
-    println!("[INFO] ld linker output: {}", String::from_utf8(linker_output.stdout).unwrap());
-    println!("[INFO] ld linker stderr: {}", String::from_utf8(linker_output.stderr).unwrap());
 }
 
 fn execute() {
-    let program_output = Command::new("out")
+    let _program_output = Command::new("./out")
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .output()
         .unwrap();
-    println!("[INFO] out output: {}", String::from_utf8(program_output.stdout).unwrap());
-    println!("[INFO] out stderr: {}", String::from_utf8(program_output.stderr).unwrap());
 }
 
 #[cfg(test)]
@@ -555,6 +549,17 @@ mod tests {
         let tokens : Vec<Token> = vec![Token::new(String::from("+"), 0, 0)];
         let program = parser("", &tokens);
         assert_eq!(program[0].opcode, Opcode::OP_ADD);
+    }
+
+    #[test]
+    fn compile_generates_executable() {
+        let source_file = "tests/arithmetic.rorth";
+        let tokens = lexer(&source_file);
+        let program = parser(&source_file, &tokens);
+        compile(&program, false);
+        assert_eq!(std::path::Path::new("out.asm").exists(), true);
+        assert_eq!(std::path::Path::new("out.o").exists(), true);
+        assert_eq!(std::path::Path::new("out").exists(), true);
     }
 
     #[test]
