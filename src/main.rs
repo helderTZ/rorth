@@ -585,13 +585,16 @@ fn codegen(program: &Vec<Instruction>, exec_file : &str) {
                 writeln!(&mut asm_file, "    call dump").unwrap();
             },
             Opcode::OP_IF => {
-                unimplemented!();
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_IF", ins.ip).unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+                writeln!(&mut asm_file, "    test rax, rax").unwrap();
+                writeln!(&mut asm_file, "    jz .addr_{}", ins.operands[0]+1).unwrap();
             },
             Opcode::OP_ELSE => {
-                unimplemented!();
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_ELSE", ins.ip).unwrap();
             },
             Opcode::OP_END => {
-                unimplemented!();
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_END", ins.ip).unwrap();
             },
             Opcode::OP_WHILE => {
                 unimplemented!();
@@ -705,7 +708,7 @@ mod tests {
     }
 
     #[test]
-    fn interpret_if() {
+    fn interpret_ifs() {
         let source_file = "tests/if.rorth";
         let tokens = lexer(&source_file);
         let program = parser(&source_file, &tokens);
@@ -715,7 +718,7 @@ mod tests {
     }
 
     #[test]
-    fn interpret_while() {
+    fn interpret_whiles() {
         let source_file = "tests/while.rorth";
         let tokens = lexer(&source_file);
         let program = parser(&source_file, &tokens);
@@ -739,5 +742,21 @@ mod tests {
         fs::remove_file("./test_compile_comparisons.asm").unwrap();
         fs::remove_file("./test_compile_comparisons.o").unwrap();
         fs::remove_file("./test_compile_comparisons").unwrap();
+    }
+    #[test]
+    fn compile_ifs() {
+        let source_file = "tests/if.rorth";
+        let tokens = lexer(&source_file);
+        let program = parser(&source_file, &tokens);
+        compile(&program, "test_compile_ifs", false);
+        let exec_output = Command::new("./test_compile_ifs")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .expect("Expected a 0 return code");
+        assert_eq!(exec_output.stdout, b"1\n42\n42\n0\n42\n");
+        fs::remove_file("./test_compile_ifs.asm").unwrap();
+        fs::remove_file("./test_compile_ifs.o").unwrap();
+        fs::remove_file("./test_compile_ifs").unwrap();
     }
 }
