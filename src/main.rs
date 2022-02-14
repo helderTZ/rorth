@@ -16,6 +16,7 @@ enum Opcode {
     OP_SUB,
     OP_MUL,
     OP_DIV,
+    OP_NOT,
     OP_EQ,
     OP_NE,
     OP_GT,
@@ -198,6 +199,7 @@ fn parser(source_file : &str, tokens : &Vec<Token>) -> Vec<Instruction> {
         else if tok.tok == "-"      { program.push(Instruction::new(Opcode::OP_SUB, vec![], ip)); }
         else if tok.tok == "*"      { program.push(Instruction::new(Opcode::OP_MUL, vec![], ip)); }
         else if tok.tok == "/"      { program.push(Instruction::new(Opcode::OP_DIV, vec![], ip)); }
+        else if tok.tok == "!"      { program.push(Instruction::new(Opcode::OP_NOT, vec![], ip)); }
         else if tok.tok == "="      { program.push(Instruction::new(Opcode::OP_EQ, vec![], ip)); }
         else if tok.tok == "!="     { program.push(Instruction::new(Opcode::OP_NE, vec![], ip)); }
         else if tok.tok == ">"      { program.push(Instruction::new(Opcode::OP_GT, vec![], ip)); }
@@ -267,7 +269,8 @@ fn parser(source_file : &str, tokens : &Vec<Token>) -> Vec<Instruction> {
             }
         }
         else {
-            let immediate = tok.tok.parse::<i64>().unwrap();
+            let immediate = tok.tok.parse::<i64>()
+                .expect(&format!("Expected integer, got {}", tok.tok));
             program.push(Instruction::new(Opcode::OP_PUSH, vec![immediate], ip));
         }
     }
@@ -303,6 +306,19 @@ fn interpret<W: Write>(program : &Vec<Instruction>, stdout : &mut W) {
                 let a = stack.pop().unwrap();
                 let b = stack.pop().unwrap();
                 stack.push(b/a);
+            },
+            Opcode::OP_NOT => {
+                let a = stack.pop().unwrap();
+                if a == 0 {
+                    stack.push(1);
+                } else if a == 1 {
+                    stack.push(0);
+                } else {
+                    println!("[ERROR] Expected a boolen in the stack, found {}", a);
+                    _dump_bytecode(&program);
+                    _dump_stack(&stack);
+                    process::exit(1);
+                }
             },
             Opcode::OP_EQ => {
                 let a = stack.pop().unwrap();
@@ -459,23 +475,57 @@ fn codegen(program: &Vec<Instruction>) {
                 writeln!(&mut asm_file, "    push rax").unwrap();
                 writeln!(&mut asm_file, "    push rdx").unwrap();
             },
+            Opcode::OP_NOT => {
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+                writeln!(&mut asm_file, "    not rax").unwrap();
+            },
             Opcode::OP_EQ => {
-                unimplemented!();
+                writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
+                writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+                writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    cmp rax, rbx").unwrap();
+                writeln!(&mut asm_file, "    cmove rcx, rdx").unwrap();
             },
             Opcode::OP_NE => {
-                unimplemented!();
+                writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
+                writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+                writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    cmp rax, rbx").unwrap();
+                writeln!(&mut asm_file, "    cmovne rcx, rdx").unwrap();
             },
             Opcode::OP_GT => {
-                unimplemented!();
+                writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
+                writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+                writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    cmp rax, rbx").unwrap();
+                writeln!(&mut asm_file, "    cmovg rcx, rdx").unwrap();
             },
             Opcode::OP_GE => {
-                unimplemented!();
+                writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
+                writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+                writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    cmp rax, rbx").unwrap();
+                writeln!(&mut asm_file, "    cmovge rcx, rdx").unwrap();
             },
             Opcode::OP_LT => {
-                unimplemented!();
+                writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
+                writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+                writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    cmp rax, rbx").unwrap();
+                writeln!(&mut asm_file, "    cmovl rcx, rdx").unwrap();
             },
             Opcode::OP_LE => {
-                unimplemented!();
+                writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
+                writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+                writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    cmp rax, rbx").unwrap();
+                writeln!(&mut asm_file, "    cmovle rcx, rdx").unwrap();
             },
             Opcode::OP_DUP => {
                 writeln!(&mut asm_file, "    pop rax").unwrap();
@@ -563,7 +613,7 @@ mod tests {
     }
 
     #[test]
-    fn run_arithmetic() {
+    fn interpret_arithmetic() {
         let source_file = "tests/arithmetic.rorth";
         let tokens = lexer(&source_file);
         let program = parser(&source_file, &tokens);
@@ -573,7 +623,7 @@ mod tests {
     }
 
     #[test]
-    fn run_comparisons() {
+    fn interpret_comparisons() {
         let source_file = "tests/comparisons.rorth";
         let tokens = lexer(&source_file);
         let program = parser(&source_file, &tokens);
@@ -583,7 +633,7 @@ mod tests {
     }
 
     #[test]
-    fn run_if() {
+    fn interpret_if() {
         let source_file = "tests/if.rorth";
         let tokens = lexer(&source_file);
         let program = parser(&source_file, &tokens);
@@ -593,7 +643,7 @@ mod tests {
     }
 
     #[test]
-    fn run_while() {
+    fn interpret_while() {
         let source_file = "tests/while.rorth";
         let tokens = lexer(&source_file);
         let program = parser(&source_file, &tokens);
@@ -601,4 +651,18 @@ mod tests {
         interpret(&program, &mut stdout);
         assert_eq!(stdout, b"10\n9\n8\n7\n6\n5\n4\n3\n2\n1\n420\n");
     }
+
+    #[test]
+    // fn compile_comparisons() {
+    //     let source_file = "tests/comparisons.rorth";
+    //     let tokens = lexer(&source_file);
+    //     let program = parser(&source_file, &tokens);
+    //     compile(&program, false);
+    //     let exec_output = Command::new("./out")
+    //         .stdout(Stdio::piped())
+    //         .stderr(Stdio::piped())
+    //         .output()
+    //         .unwrap();
+    //     assert_eq!(exec_output.stdout, b"1\n0\n0\n1\n1\n0\n0\n1\n");
+    // }
 }
