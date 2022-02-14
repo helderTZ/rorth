@@ -418,7 +418,7 @@ fn codegen(program: &Vec<Instruction>) {
     writeln!(&mut asm_file, ".L2:").unwrap();
     writeln!(&mut asm_file, "    mov     rax, rsi").unwrap();
     writeln!(&mut asm_file, "    mov     r9, r8").unwrap();
-    writeln!(&mut asm_file, "    mul     r10\n").unwrap();
+    writeln!(&mut asm_file, "    mul     r10").unwrap();
     writeln!(&mut asm_file, "    mov     rax, rsi").unwrap();
     writeln!(&mut asm_file, "    sub     r9, rcx").unwrap();
     writeln!(&mut asm_file, "    shr     rdx, 3").unwrap();
@@ -484,6 +484,7 @@ fn codegen(program: &Vec<Instruction>) {
                 writeln!(&mut asm_file, ".addr_{}: ;; OP_NOT", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    not rax").unwrap();
+                writeln!(&mut asm_file, "    push rax").unwrap();
             },
             Opcode::OP_EQ => {
                 writeln!(&mut asm_file, ".addr_{}: ;; OP_EQ", ins.ip).unwrap();
@@ -493,6 +494,7 @@ fn codegen(program: &Vec<Instruction>) {
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
                 writeln!(&mut asm_file, "    cmp rax, rbx").unwrap();
                 writeln!(&mut asm_file, "    cmove rcx, rdx").unwrap();
+                writeln!(&mut asm_file, "    push rcx").unwrap();
             },
             Opcode::OP_NE => {
                 writeln!(&mut asm_file, ".addr_{}: ;; OP_NE", ins.ip).unwrap();
@@ -502,42 +504,47 @@ fn codegen(program: &Vec<Instruction>) {
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
                 writeln!(&mut asm_file, "    cmp rax, rbx").unwrap();
                 writeln!(&mut asm_file, "    cmovne rcx, rdx").unwrap();
+                writeln!(&mut asm_file, "    push rcx").unwrap();
             },
             Opcode::OP_GT => {
                 writeln!(&mut asm_file, ".addr_{}: ;; OP_GT", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
                 writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
-                writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    cmp rax, rbx").unwrap();
                 writeln!(&mut asm_file, "    cmovg rcx, rdx").unwrap();
+                writeln!(&mut asm_file, "    push rcx").unwrap();
             },
             Opcode::OP_GE => {
                 writeln!(&mut asm_file, ".addr_{}: ;; OP_GE", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
                 writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
-                writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    cmp rax, rbx").unwrap();
                 writeln!(&mut asm_file, "    cmovge rcx, rdx").unwrap();
+                writeln!(&mut asm_file, "    push rcx").unwrap();
             },
             Opcode::OP_LT => {
                 writeln!(&mut asm_file, ".addr_{}: ;; OP_LT", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
                 writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
-                writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    cmp rax, rbx").unwrap();
                 writeln!(&mut asm_file, "    cmovl rcx, rdx").unwrap();
+                writeln!(&mut asm_file, "    push rcx").unwrap();
             },
             Opcode::OP_LE => {
                 writeln!(&mut asm_file, ".addr_{}: ;; OP_LE", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    mov rcx, 0").unwrap();
                 writeln!(&mut asm_file, "    mov rdx, 1").unwrap();
-                writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
                 writeln!(&mut asm_file, "    cmp rax, rbx").unwrap();
                 writeln!(&mut asm_file, "    cmovle rcx, rdx").unwrap();
+                writeln!(&mut asm_file, "    push rcx").unwrap();
             },
             Opcode::OP_DUP => {
                 writeln!(&mut asm_file, ".addr_{}: ;; OP_DUP", ins.ip).unwrap();
