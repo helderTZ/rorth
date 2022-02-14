@@ -64,11 +64,13 @@ fn usage() {
     println!("\nUSAGE:");
     println!("    {} <SUBCOMMAND> [OPTIONS]", env::current_exe().unwrap().file_name().unwrap().to_str().unwrap());
     println!("\nOPTIONS:");
-    println!("    -h, --help                    Print this message");
+    println!("    -h, --help                        Print this message");
+    println!("    -b, --bytecode                    Dump bytecode to file (out.bytecode)");
     println!("\nSUBCOMMANDS:");
-    println!("    interpret <FILE>              Interprets source file FILE");
-    println!("    compile <FILE> [-r, --run]    Compiles source file FILE into native code");
-    println!("        -r, --run                 Runs program after compiling");
+    println!("    interpret <FILE>                  Interprets source file FILE");
+    println!("    compile <FILE> [-r] [-o OUT_FILE] Compiles source file FILE into native code");
+    println!("        -r, --run                     Runs program after compiling");
+    println!("        -o, --output                  Name of the executable (default: out)");
 }
 
 fn main() {
@@ -76,8 +78,11 @@ fn main() {
     let mut comp : bool = false;
     let mut interp : bool = false;
     let mut run_prog : bool = false;
+    let mut dump_bc : bool = false;
+    let mut exec_file: String = String::from("out");
     let mut source_file : String = String::from("");
-    let mut file_next : bool = false;
+    let mut source_file_next : bool = false;
+    let mut exec_file_next : bool = false;
 
     for arg in env::args() {
         if arg == "-h" || arg == "--help" {
@@ -86,20 +91,32 @@ fn main() {
         }
         if arg == "compile" {
             comp = true;
-            file_next = true;
+            source_file_next = true;
             continue;
         }
         if arg == "interpret" {
             interp = true;
-            file_next = true;
+            source_file_next = true;
             continue;
         }
         if arg == "-r" || arg == "--run" {
             run_prog = true;
             continue;
         }
-        if file_next {
+        if arg == "-b" || arg == "--bytecode" {
+            dump_bc = true;
+            continue;
+        }
+        if arg == "-o" || arg == "--output" {
+            exec_file_next = true;
+            continue;
+        }
+        if source_file_next {
             source_file = arg;
+            continue;
+        }
+        if exec_file_next {
+            exec_file = arg;
             continue;
         }
     }
@@ -120,11 +137,16 @@ fn main() {
 
     let tokens = lexer(source_file.as_str());
     let program = parser(&source_file, &tokens);
+
+    if dump_bc {
+        _dump_bytecode(&program);
+    }
+
     if interp {
         interpret(&program, &mut io::stdout());
     }
     if comp {
-        compile(&program, run_prog);
+        compile(&program, &exec_file, run_prog);
     }
 }
 
@@ -138,9 +160,9 @@ fn _dump_tokens(tokens : &Vec<Token>) {
 
 // debug function
 fn _dump_bytecode(program : &Vec<Instruction>) {
-    println!("Bytecode:");
+    println!("Bytecode:\n[ip | opcode  | operands]");
     for (i, ins) in program.iter().enumerate() {
-        println!("\t{} {:?}", i, ins);
+        println!("{:>3}   {:?}\t{:>?}", i, ins.opcode, ins.operands);
     }
 }
 
@@ -394,16 +416,21 @@ fn interpret<W: Write>(program : &Vec<Instruction>, stdout : &mut W) {
     }
 }
 
-fn compile(program : &Vec<Instruction>, run_prog : bool) {
-    codegen(program);
-    build();
+fn compile(program : &Vec<Instruction>, exec_file: &str, run_prog : bool) {
+    codegen(program, &exec_file);
+    let status = build(&exec_file);
+    if status == 1 {
+        _dump_bytecode(&program);
+        process::exit(1);
+    }
     if run_prog {
-        execute();
+        execute(&exec_file);
     }
 }
 
-fn codegen(program: &Vec<Instruction>) {
-    let mut asm_file = File::create("out.asm")
+fn codegen(program: &Vec<Instruction>, exec_file : &str) {
+    let asm_filename = exec_file.to_string() + ".asm";
+    let mut asm_file = File::create(asm_filename)
         .expect("Could not open file");
     writeln!(&mut asm_file, "%define SYS_EXIT 60").unwrap();
     writeln!(&mut asm_file, "%define SYS_WRITE 1").unwrap();
@@ -574,38 +601,59 @@ fn codegen(program: &Vec<Instruction>) {
             }
         }
     }
+    writeln!(&mut asm_file, ".end:").unwrap();
     writeln!(&mut asm_file, "    mov rax, SYS_EXIT").unwrap();
     writeln!(&mut asm_file, "    mov rdi, 0").unwrap();
     writeln!(&mut asm_file, "    syscall").unwrap();
     writeln!(&mut asm_file, "    ret").unwrap();
 }
 
-fn build() {
-    let _compiler_output = Command::new("nasm")
-        .args(["-felf64", "out.asm"])
+fn build(exec_file : &str) -> usize{
+    let asm_filename = exec_file.to_string() + ".asm";
+    let compiler_status = Command::new("nasm")
+        .args(["-felf64", asm_filename.as_str()])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
-        .output()
+        .status()
         .unwrap();
 
-    let _linker_output = Command::new("ld")
-        .args(["-o", "out", "out.o"])
+    match compiler_status.code() {
+        Some(0) => { },
+        Some(_) => { return 1; }
+        None => { return 1; }
+    }
+
+    let obj_filename = exec_file.to_string() + ".o";
+    let linker_status = Command::new("ld")
+        .args(["-o", exec_file, obj_filename.as_str()])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
-        .output()
+        .status()
         .unwrap();
+
+    match linker_status.code() {
+        Some(0) => { },
+        Some(_) => { return 1; }
+        None => { return 1; }
+    }
+
+    0
 }
 
-fn execute() {
-    let _program_output = Command::new("./out")
+fn execute(exec_file : &str) {
+    let mut exec_filename  = String::from(exec_file);
+    exec_filename.insert_str(0, "./");
+    let _program_output = Command::new(exec_filename)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
-        .output()
+        .status()
         .unwrap();
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
 
     #[test]
@@ -627,10 +675,13 @@ mod tests {
         let source_file = "tests/arithmetic.rorth";
         let tokens = lexer(&source_file);
         let program = parser(&source_file, &tokens);
-        compile(&program, false);
-        assert_eq!(std::path::Path::new("out.asm").exists(), true);
-        assert_eq!(std::path::Path::new("out.o").exists(), true);
-        assert_eq!(std::path::Path::new("out").exists(), true);
+        compile(&program, "test_compile_generates_executable", false);
+        assert_eq!(std::path::Path::new("./test_compile_generates_executable.asm").exists(), true);
+        assert_eq!(std::path::Path::new("./test_compile_generates_executable.o").exists(), true);
+        assert_eq!(std::path::Path::new("./test_compile_generates_executable").exists(), true);
+        fs::remove_file("./test_compile_generates_executable.asm").unwrap();
+        fs::remove_file("./test_compile_generates_executable.o").unwrap();
+        fs::remove_file("./test_compile_generates_executable").unwrap();
     }
 
     #[test]
@@ -673,17 +724,20 @@ mod tests {
         assert_eq!(stdout, b"10\n9\n8\n7\n6\n5\n4\n3\n2\n1\n420\n");
     }
 
-    // #[test]
-    // fn compile_comparisons() {
-    //     let source_file = "tests/comparisons.rorth";
-    //     let tokens = lexer(&source_file);
-    //     let program = parser(&source_file, &tokens);
-    //     compile(&program, false);
-    //     let exec_output = Command::new("./out")
-    //         .stdout(Stdio::piped())
-    //         .stderr(Stdio::piped())
-    //         .output()
-    //         .unwrap();
-    //     assert_eq!(exec_output.stdout, b"1\n0\n0\n1\n1\n0\n0\n1\n");
-    // }
+    #[test]
+    fn compile_comparisons() {
+        let source_file = "tests/comparisons.rorth";
+        let tokens = lexer(&source_file);
+        let program = parser(&source_file, &tokens);
+        compile(&program, "test_compile_comparisons", false);
+        let exec_output = Command::new("./test_compile_comparisons")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .expect("Expected a 0 return code");
+        assert_eq!(exec_output.stdout, b"1\n0\n0\n1\n1\n0\n0\n1\n");
+        fs::remove_file("./test_compile_comparisons.asm").unwrap();
+        fs::remove_file("./test_compile_comparisons.o").unwrap();
+        fs::remove_file("./test_compile_comparisons").unwrap();
+    }
 }
