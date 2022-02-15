@@ -772,6 +772,16 @@ mod tests {
     }
 
     #[test]
+    fn interpret_nested_ifs() {
+        let source_file = "tests/nested_if.rorth";
+        let tokens = lexer(&source_file);
+        let program = parser(&source_file, &tokens);
+        let mut stdout = Vec::new();
+        interpret(&program, &mut stdout);
+        assert_eq!(stdout, b"42\n42\n");
+    }
+
+    #[test]
     fn interpret_whiles() {
         let source_file = "tests/while.rorth";
         let tokens = lexer(&source_file);
@@ -797,6 +807,7 @@ mod tests {
         fs::remove_file("./test_compile_comparisons.o").unwrap();
         fs::remove_file("./test_compile_comparisons").unwrap();
     }
+
     #[test]
     fn compile_ifs() {
         let source_file = "tests/if.rorth";
@@ -812,5 +823,22 @@ mod tests {
         fs::remove_file("./test_compile_ifs.asm").unwrap();
         fs::remove_file("./test_compile_ifs.o").unwrap();
         fs::remove_file("./test_compile_ifs").unwrap();
+    }
+
+    #[test]
+    fn compile_nested_ifs() {
+        let source_file = "tests/nested_if.rorth";
+        let tokens = lexer(&source_file);
+        let program = parser(&source_file, &tokens);
+        compile(&program, "test_compile_nested_ifs", false);
+        let exec_output = Command::new("./test_compile_nested_ifs")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .expect("Expected a 0 return code");
+        assert_eq!(exec_output.stdout, b"42\n42\n");
+        fs::remove_file("./test_compile_nested_ifs.asm").unwrap();
+        fs::remove_file("./test_compile_nested_ifs.o").unwrap();
+        fs::remove_file("./test_compile_nested_ifs").unwrap();
     }
 }
