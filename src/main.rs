@@ -65,7 +65,7 @@ fn usage() {
     println!("    {} <SUBCOMMAND> [OPTIONS]", env::current_exe().unwrap().file_name().unwrap().to_str().unwrap());
     println!("\nOPTIONS:");
     println!("    -h, --help                        Print this message");
-    println!("    -b, --bytecode                    Dump bytecode to file (out.bytecode)");
+    println!("    -b, --bytecode                    Dump bytecode to file");
     println!("\nSUBCOMMANDS:");
     println!("    interpret <FILE>                  Interprets source file FILE");
     println!("    compile <FILE> [-r] [-o OUT_FILE] Compiles source file FILE into native code");
@@ -140,6 +140,7 @@ fn main() {
 
     if dump_bc {
         _dump_bytecode(&program);
+        _dump_bytecode_to_file(&program, &source_file);
     }
 
     if interp {
@@ -167,6 +168,16 @@ fn _dump_bytecode(program : &Vec<Instruction>) {
 }
 
 // debug function
+fn _dump_bytecode_to_file(program : &Vec<Instruction>, filename: &str) {
+    let bytecode_filename = filename.to_string() + ".bytecode";
+    let mut bytecode_file = File::create(bytecode_filename)
+        .expect("Could not open file");
+    for (i, ins) in program.iter().enumerate() {
+        writeln!(&mut bytecode_file, "{:>3}   {:?} {:>?}", i, ins.opcode, ins.operands).unwrap();
+    }
+}
+
+// debug function
 fn _dump_crossref(stack: &Vec<usize>) {
     print!("Crossref:");
     for (i, val) in stack.iter().enumerate() {
@@ -186,7 +197,8 @@ fn _dump_stack(stack: &Vec<i64>) {
 
 //FIXME: col is wrong, it should be the char index, not the word index
 fn lexer(filename: &str) -> Vec<Token> {
-    let source : String = std::fs::read_to_string(filename).unwrap();
+    let source : String = std::fs::read_to_string(filename)
+        .expect(&format!("Could not read file {}", filename));
     let mut tokens : Vec<Token> = Vec::new();
     for (i, line) in source.lines().enumerate() {
         let filtered_line = line.split("//").next().unwrap();
@@ -237,10 +249,17 @@ fn parser(source_file : &str, tokens : &Vec<Token>) -> Vec<Instruction> {
         else if tok.tok == "else" {
             program.push(Instruction::new(Opcode::OP_ELSE, vec![], ip));
             if let Some(if_ip) = crossref.pop() {
+                if program[if_ip].opcode != Opcode::OP_IF {
+                    eprintln!("[ERROR] {}:{}:{}: @ip {}: Found `else` without matching `if`",
+                        source_file, tokens[ip].row+1, tokens[ip].col+1, ip);
+                    _dump_bytecode(&program);
+                    _dump_crossref(&crossref);
+                    process::exit(1);
+                }
                 program[if_ip].operands.push(ip as i64);
                 crossref.push(ip);
-            } else {
-                println!("[ERROR] {}:{}:{}: Found `else` without matching `if` at ip {}",
+        } else {
+                eprintln!("[ERROR] {}:{}:{}: @ip {}: Found `else` without matching `if`",
                     source_file, tokens[ip].row+1, tokens[ip].col+1, ip);
                 _dump_bytecode(&program);
                 _dump_crossref(&crossref);
@@ -252,38 +271,60 @@ fn parser(source_file : &str, tokens : &Vec<Token>) -> Vec<Instruction> {
             crossref.push(program[ip].ip);
         }
         else if tok.tok == "do" {
-            program.push(Instruction::new(Opcode::OP_DO, vec![], ip));
-            crossref.push(program[ip].ip);
-        }
-        //TODO: support nested whiles
-        else if tok.tok == "end" {
-            program.push(Instruction::new(Opcode::OP_END, vec![], ip));
-            if let Some(ifelsedo_ip) = crossref.pop() {
-                program[ifelsedo_ip].operands.push(ip as i64);
-                if program[ifelsedo_ip].opcode == Opcode::OP_WHILE {
-                    println!("[ERROR] {}:{}:{}: Found `while` without matching `do` at ip {}",
+            if let Some(while_ip) = crossref.pop() {
+                if program[while_ip].opcode != Opcode::OP_WHILE {
+                    eprintln!("[ERROR] {}:{}:{}: @ip {}: Found `while` without matching `do`",
                         source_file, tokens[ip].row+1, tokens[ip].col+1, ip);
                     _dump_bytecode(&program);
                     _dump_crossref(&crossref);
                     process::exit(1);
                 }
-                if program[ifelsedo_ip].opcode == Opcode::OP_DO {
-                    program[ifelsedo_ip].operands.push(ip as i64);
-                    if let Some(ifelsedo_ip) = crossref.pop() {
-                        if program[ifelsedo_ip].opcode == Opcode::OP_WHILE {
-                            program[ip].operands.push(ifelsedo_ip as i64);
-                        }
-                        else {
-                            println!("[ERROR] {}:{}:{}: Found `do` without matching `while` at ip {}",
-                                source_file, tokens[ip].row+1, tokens[ip].col+1, ip);
-                            _dump_bytecode(&program);
-                            _dump_crossref(&crossref);
-                            process::exit(1);
-                        }
+                program.push(Instruction::new(Opcode::OP_DO, vec![], ip));
+                program[ip].operands.push(while_ip as i64);
+                crossref.push(program[ip].ip);
+            }
+        }
+        //TODO: support nested whiles
+        else if tok.tok == "end" {
+            // three situations
+            // situation 1 : if -> end
+            // situation 2 : if -> else -> end
+            // situation 3 : while -> do -> end
+            // --- situation 1 ---
+            //      if points to end+1, end fallsthrough
+            // --- situation 2 ---
+            //      if points to else+1, else fallsthrough, end fallsthrough
+            // --- situation 3 ---
+            // do points to end+1, end points to while+1
+            program.push(Instruction::new(Opcode::OP_END, vec![], ip));
+            if let Some(prev_ip) = crossref.pop() {
+                // situation 1 or 2
+                if program[prev_ip].opcode == Opcode::OP_IF
+                    || program[prev_ip].opcode == Opcode::OP_ELSE {
+                    program[prev_ip].operands.push(ip as i64);
+                }
+                if program[prev_ip].opcode == Opcode::OP_WHILE {
+                    eprintln!("[ERROR] {}:{}:{}: @ip {}: Found `while` without matching `do`",
+                        source_file, tokens[ip].row+1, tokens[ip].col+1, ip);
+                    _dump_bytecode(&program);
+                    _dump_crossref(&crossref);
+                    process::exit(1);
+                }
+                // situation 3, DO has WHILE's ip in its operands
+                if program[prev_ip].opcode == Opcode::OP_DO {
+                    if let Some(while_ip) = program[prev_ip].operands.pop() {
+                        program[ip].operands.push(while_ip as i64);
+                        program[prev_ip].operands.push(ip as i64);
+                    } else {
+                        eprintln!("[ERROR] {}:{}:{}: @ip {}:Found `do` without matching `while`",
+                            source_file, tokens[ip].row+1, tokens[ip].col+1, ip);
+                        _dump_bytecode(&program);
+                        _dump_crossref(&crossref);
+                        process::exit(1);
                     }
                 }
             } else {
-                println!("[ERROR] {}:{}:{}: Found `end` without matching `if-else` or `while-do` at ip {}",
+                eprintln!("[ERROR] {}:{}:{}: @ip {}: Found `end` without matching `if-else` or `while-do`",
                     source_file, tokens[ip].row+1, tokens[ip].col+1, ip);
                 _dump_bytecode(&program);
                 _dump_crossref(&crossref);
@@ -292,7 +333,8 @@ fn parser(source_file : &str, tokens : &Vec<Token>) -> Vec<Instruction> {
         }
         else {
             let immediate = tok.tok.parse::<i64>()
-                .expect(&format!("Expected integer, got {}", tok.tok));
+                .expect(&format!("[ERROR] {}:{}:{}: @ip {}: Expected integer, got {}",
+                    source_file, tokens[ip].row+1, tokens[ip].col+1, ip, tok.tok));
             program.push(Instruction::new(Opcode::OP_PUSH, vec![immediate], ip));
         }
     }
@@ -336,7 +378,7 @@ fn interpret<W: Write>(program : &Vec<Instruction>, stdout : &mut W) {
                 } else if a == 1 {
                     stack.push(0);
                 } else {
-                    println!("[ERROR] Expected a boolen in the stack, found {}", a);
+                    eprintln!("[ERROR] @ip {}: Expected a boolen in the stack, found {}", ip, a);
                     _dump_bytecode(&program);
                     _dump_stack(&stack);
                     process::exit(1);
@@ -381,6 +423,7 @@ fn interpret<W: Write>(program : &Vec<Instruction>, stdout : &mut W) {
                 if let Some(a) = stack.pop() {
                     writeln!(stdout, "{}", a).unwrap();
                 } else {
+                    eprintln!("[ERROR] @ip {}: Tried to pop but stack was empty", ip);
                     _dump_bytecode(&program);
                     _dump_stack(&stack);
                     process::exit(1);
@@ -397,7 +440,7 @@ fn interpret<W: Write>(program : &Vec<Instruction>, stdout : &mut W) {
             },
             Opcode::OP_END => {
                 // if has one operand, it points to while
-                // if has no operands, it ends an if
+                // if has no operands, it ends an if => falthrough
                 if ins.operands.len() == 1 {
                     ip = ins.operands[0] as usize;
                 }
@@ -592,15 +635,26 @@ fn codegen(program: &Vec<Instruction>, exec_file : &str) {
             },
             Opcode::OP_ELSE => {
                 writeln!(&mut asm_file, ".addr_{}: ;; OP_ELSE", ins.ip).unwrap();
+                writeln!(&mut asm_file, "    jmp .addr_{}", ins.operands[0]+1).unwrap();
             },
             Opcode::OP_END => {
-                writeln!(&mut asm_file, ".addr_{}: ;; OP_END", ins.ip).unwrap();
+                if ins.operands.len() == 0 {
+                    // no operands means it ends an if => flalthrough
+                    continue;
+                } else {
+                    // points back to while
+                    writeln!(&mut asm_file, ".addr_{}: ;; OP_END", ins.ip).unwrap();
+                    writeln!(&mut asm_file, "    jmp .addr_{}", ins.operands[0]).unwrap();
+                }
             },
             Opcode::OP_WHILE => {
-                unimplemented!();
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_WHILE", ins.ip).unwrap();
             },
             Opcode::OP_DO => {
-                unimplemented!();
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_DO", ins.ip).unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+                writeln!(&mut asm_file, "    test rax, rax").unwrap();
+                writeln!(&mut asm_file, "    jz .addr_{}", ins.operands[0]+1).unwrap();
             }
         }
     }
