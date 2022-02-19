@@ -663,16 +663,32 @@ fn codegen(program: &Vec<Instruction>, exec_file : &str) {
                 writeln!(&mut asm_file, "    push rcx").unwrap();
             },
             Opcode::OP_SHL => {
-                unimplemented!();
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_SHL", ins.ip).unwrap();
+                writeln!(&mut asm_file, "    pop rcx").unwrap();
+                writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    shl rbx, cl").unwrap();
+                writeln!(&mut asm_file, "    push rbx").unwrap();
             }
             Opcode::OP_SHR => {
-                unimplemented!();
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_SHR", ins.ip).unwrap();
+                writeln!(&mut asm_file, "    pop rcx").unwrap();
+                writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    shr rbx, cl").unwrap();
+                writeln!(&mut asm_file, "    push rbx").unwrap();
             }
             Opcode::OP_BOR => {
-                unimplemented!();
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_BOR", ins.ip).unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+                writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    or rbx, rax").unwrap();
+                writeln!(&mut asm_file, "    push rbx").unwrap();
             }
             Opcode::OP_BAND => {
-                unimplemented!();
+                writeln!(&mut asm_file, ".addr_{}: ;; OP_BAND", ins.ip).unwrap();
+                writeln!(&mut asm_file, "    pop rax").unwrap();
+                writeln!(&mut asm_file, "    pop rbx").unwrap();
+                writeln!(&mut asm_file, "    and rbx, rax").unwrap();
+                writeln!(&mut asm_file, "    push rbx").unwrap();
             }
             Opcode::OP_DUP => {
                 writeln!(&mut asm_file, ".addr_{}: ;; OP_DUP", ins.ip).unwrap();
@@ -880,6 +896,23 @@ mod tests {
         fs::remove_file("./test_compile_comparisons.asm").unwrap();
         fs::remove_file("./test_compile_comparisons.o").unwrap();
         fs::remove_file("./test_compile_comparisons").unwrap();
+    }
+
+    #[test]
+    fn compile_bitwise() {
+        let source_file = "tests/bitwise.rorth";
+        let tokens = lexer(&source_file);
+        let program = parser(&source_file, &tokens);
+        compile(&program, "test_compile_bitwise", false);
+        let exec_output = Command::new("./test_compile_bitwise")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .expect("Expected a 0 return code");
+        assert_eq!(exec_output.stdout, b"8\n4\n3\n0\n");
+        fs::remove_file("./test_compile_bitwise.asm").unwrap();
+        fs::remove_file("./test_compile_bitwise.o").unwrap();
+        fs::remove_file("./test_compile_bitwise").unwrap();
     }
 
     #[test]
