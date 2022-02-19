@@ -23,6 +23,10 @@ enum Opcode {
     OP_LT,
     OP_GE,
     OP_LE,
+    OP_SHR,
+    OP_SHL,
+    OP_BOR,
+    OP_BAND,
     OP_DUP,
     OP_DUMP,
     OP_IF,
@@ -178,6 +182,15 @@ fn _dump_bytecode_to_file(program : &Vec<Instruction>, filename: &str) {
 }
 
 // debug function
+fn _dump_bytecode_to_string(program : &Vec<Instruction>) -> String {
+    let mut bytecode_str = String::new();
+    for (i, ins) in program.iter().enumerate() {
+        bytecode_str += format!("{:>3}   {:?} {:>?}\n", i, ins.opcode, ins.operands).to_string().as_str();
+    }
+    return bytecode_str;
+}
+
+// debug function
 fn _dump_crossref(stack: &Vec<usize>) {
     print!("Crossref:");
     for (i, val) in stack.iter().enumerate() {
@@ -193,6 +206,15 @@ fn _dump_stack(stack: &Vec<i64>) {
         print!("({}, {}) ", i, val);
     }
     println!();
+}
+
+// debug function
+fn _dump_stack_to_string(stack: &Vec<i64>) -> String {
+    let mut stack_str = String::new();
+    for (i, val) in stack.iter().enumerate() {
+        stack_str += format!("({}, {}) \n", i, val).to_string().as_str();
+    }
+    return stack_str;
 }
 
 //FIXME: col is wrong, it should be the char index, not the word index
@@ -240,6 +262,10 @@ fn parser(source_file : &str, tokens : &Vec<Token>) -> Vec<Instruction> {
         else if tok.tok == ">="     { program.push(Instruction::new(Opcode::OP_GE, vec![], ip)); }
         else if tok.tok == "<"      { program.push(Instruction::new(Opcode::OP_LT, vec![], ip)); }
         else if tok.tok == "<="     { program.push(Instruction::new(Opcode::OP_LE, vec![], ip)); }
+        else if tok.tok == "shl"    { program.push(Instruction::new(Opcode::OP_SHL, vec![], ip)); }
+        else if tok.tok == "shr"    { program.push(Instruction::new(Opcode::OP_SHR, vec![], ip)); }
+        else if tok.tok == "bor"    { program.push(Instruction::new(Opcode::OP_BOR, vec![], ip)); }
+        else if tok.tok == "band"   { program.push(Instruction::new(Opcode::OP_BAND, vec![], ip)); }
         else if tok.tok == "."      { program.push(Instruction::new(Opcode::OP_DUMP, vec![], ip)); }
         else if tok.tok == "dup"    { program.push(Instruction::new(Opcode::OP_DUP, vec![], ip)); }
         else if tok.tok == "if" {
@@ -413,6 +439,26 @@ fn interpret<W: Write>(program : &Vec<Instruction>, stdout : &mut W) {
                 let a = stack.pop().unwrap();
                 let b = stack.pop().unwrap();
                 stack.push((b <= a) as i64);
+            },
+            Opcode::OP_SHL => {
+                let a = stack.pop().unwrap();
+                let b = stack.pop().unwrap();
+                stack.push((b << a) as i64);
+            },
+            Opcode::OP_SHR => {
+                let a = stack.pop().unwrap();
+                let b = stack.pop().unwrap();
+                stack.push((b >> a) as i64);
+            },
+            Opcode::OP_BOR => {
+                let a = stack.pop().unwrap();
+                let b = stack.pop().unwrap();
+                stack.push((b | a) as i64);
+            },
+            Opcode::OP_BAND => {
+                let a = stack.pop().unwrap();
+                let b = stack.pop().unwrap();
+                stack.push((b & a) as i64);
             },
             Opcode::OP_DUP => {
                 let a = stack.pop().unwrap();
@@ -616,6 +662,18 @@ fn codegen(program: &Vec<Instruction>, exec_file : &str) {
                 writeln!(&mut asm_file, "    cmovle rcx, rdx").unwrap();
                 writeln!(&mut asm_file, "    push rcx").unwrap();
             },
+            Opcode::OP_SHL => {
+                unimplemented!();
+            }
+            Opcode::OP_SHR => {
+                unimplemented!();
+            }
+            Opcode::OP_BOR => {
+                unimplemented!();
+            }
+            Opcode::OP_BAND => {
+                unimplemented!();
+            }
             Opcode::OP_DUP => {
                 writeln!(&mut asm_file, ".addr_{}: ;; OP_DUP", ins.ip).unwrap();
                 writeln!(&mut asm_file, "    pop rax").unwrap();
@@ -719,8 +777,8 @@ mod tests {
         let program = parser("", &tokens);
         assert_eq!(program[0].opcode, Opcode::OP_PUSH);
     }
+
     #[test]
-    
     fn parse_add() {
         let tokens : Vec<Token> = vec![Token::new(String::from("+"), 0, 0)];
         let program = parser("", &tokens);
@@ -748,7 +806,8 @@ mod tests {
         let program = parser(&source_file, &tokens);
         let mut stdout = Vec::new();
         interpret(&program, &mut stdout);
-        assert_eq!(stdout, b"69\n420\n4\n5\n");
+        assert_eq!(String::from_utf8(stdout).unwrap(),
+            String::from("69\n420\n4\n5\n"));
     }
 
     #[test]
@@ -758,7 +817,19 @@ mod tests {
         let program = parser(&source_file, &tokens);
         let mut stdout = Vec::new();
         interpret(&program, &mut stdout);
-        assert_eq!(stdout, b"1\n0\n0\n1\n1\n0\n0\n1\n");
+        assert_eq!(String::from_utf8(stdout).unwrap(),
+            String::from("1\n0\n0\n1\n1\n0\n0\n1\n"));
+    }
+
+    #[test]
+    fn interpret_bitwise() {
+        let source_file = "tests/bitwise.rorth";
+        let tokens = lexer(&source_file);
+        let program = parser(&source_file, &tokens);
+        let mut stdout = Vec::new();
+        interpret(&program, &mut stdout);
+        assert_eq!(String::from_utf8(stdout).unwrap(),
+            String::from("8\n4\n3\n0\n"));
     }
 
     #[test]
@@ -768,7 +839,8 @@ mod tests {
         let program = parser(&source_file, &tokens);
         let mut stdout = Vec::new();
         interpret(&program, &mut stdout);
-        assert_eq!(stdout, b"1\n42\n42\n0\n42\n");
+        assert_eq!(String::from_utf8(stdout).unwrap(),
+            String::from("1\n42\n42\n0\n42\n"));
     }
 
     #[test]
@@ -778,7 +850,8 @@ mod tests {
         let program = parser(&source_file, &tokens);
         let mut stdout = Vec::new();
         interpret(&program, &mut stdout);
-        assert_eq!(stdout, b"42\n42\n");
+        assert_eq!(String::from_utf8(stdout).unwrap(),
+            String::from("42\n42\n"));
     }
 
     #[test]
@@ -788,7 +861,8 @@ mod tests {
         let program = parser(&source_file, &tokens);
         let mut stdout = Vec::new();
         interpret(&program, &mut stdout);
-        assert_eq!(stdout, b"10\n9\n8\n7\n6\n5\n4\n3\n2\n1\n420\n");
+        assert_eq!(String::from_utf8(stdout).unwrap(),
+            String::from("10\n9\n8\n7\n6\n5\n4\n3\n2\n1\n420\n"));
     }
 
     #[test]

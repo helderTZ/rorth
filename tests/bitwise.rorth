@@ -1,0 +1,11 @@
+// shift left
+1 3 shl .
+
+// shift right
+32 3 shr .
+
+// bitwise or
+1 2 bor .
+
+// bitwise and
+1 2 band .
