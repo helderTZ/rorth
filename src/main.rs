@@ -418,6 +418,14 @@ fn debug(program : &Vec<Instruction>) {
     println!();
 }
 
+fn interpret<W: Write>(program : &Vec<Instruction>, stdout : &mut W) {
+    let mut stack : Vec<i64> = Vec::new();
+    let mut ip = 0;
+    while ip < program.len() {
+        ip = interpret_single_instruction(&program, ip, &mut stack, stdout);
+    }
+}
+
 fn interpret_single_instruction<W: Write>(program : &Vec<Instruction>, mut ip : usize, stack : &mut Vec<i64>, stdout : &mut W) -> usize {
     let ins = &program[ip];
     match ins.opcode {
@@ -547,144 +555,6 @@ fn interpret_single_instruction<W: Write>(program : &Vec<Instruction>, mut ip : 
         }
     }
     ip + 1
-}
-
-fn interpret<W: Write>(program : &Vec<Instruction>, stdout : &mut W) {
-    // _dump_bytecode(program);
-    let mut stack : Vec<i64> = Vec::new();
-    let mut ip = 0;
-    while ip < program.len() {
-        let ins = &program[ip];
-        match ins.opcode {
-            Opcode::OP_PUSH => {
-                stack.push(ins.operands[0]);
-            },
-            Opcode::OP_ADD => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push(a+b);
-            },
-            Opcode::OP_SUB => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push(b-a);
-            },
-            Opcode::OP_MUL => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push(a*b);
-            },
-            Opcode::OP_DIV => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push(b/a);
-            },
-            Opcode::OP_NOT => {
-                let a = stack.pop().unwrap();
-                if a == 0 {
-                    stack.push(1);
-                } else if a == 1 {
-                    stack.push(0);
-                } else {
-                    eprintln!("[ERROR] @ip {}: Expected a boolen in the stack, found {}", ip, a);
-                    _dump_bytecode(&program);
-                    _dump_stack(&stack);
-                    process::exit(1);
-                }
-            },
-            Opcode::OP_EQ => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push(((a==b) as i32) as i64);
-            },
-            Opcode::OP_NE => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((a != b) as i64);
-            },
-            Opcode::OP_GT => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b > a) as i64);
-            },
-            Opcode::OP_GE => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b >= a) as i64);
-            },
-            Opcode::OP_LT => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b < a) as i64);
-            },
-            Opcode::OP_LE => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b <= a) as i64);
-            },
-            Opcode::OP_SHL => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b << a) as i64);
-            },
-            Opcode::OP_SHR => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b >> a) as i64);
-            },
-            Opcode::OP_BOR => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b | a) as i64);
-            },
-            Opcode::OP_BAND => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b & a) as i64);
-            },
-            Opcode::OP_DUP => {
-                let a = stack.pop().unwrap();
-                stack.push(a);
-                stack.push(a);
-            },
-            Opcode::OP_DUMP => {
-                if let Some(a) = stack.pop() {
-                    writeln!(stdout, "{}", a).unwrap();
-                } else {
-                    eprintln!("[ERROR] @ip {}: Tried to pop but stack was empty", ip);
-                    _dump_bytecode(&program);
-                    _dump_stack(&stack);
-                    process::exit(1);
-                }
-            }
-            Opcode::OP_IF => {
-                let a = stack.pop().unwrap();
-                if a == 0 {
-                    ip = ins.operands[0] as usize;
-                }
-            },
-            Opcode::OP_ELSE => {
-                ip = ins.operands[0] as usize;
-            },
-            Opcode::OP_END => {
-                // if has one operand, it points to while
-                // if has no operands, it ends an if => falthrough
-                if ins.operands.len() == 1 {
-                    ip = ins.operands[0] as usize;
-                }
-            },
-            Opcode::OP_WHILE => { },
-            Opcode::OP_DO => {
-                let a = stack.pop().unwrap();
-                if a == 0 {
-                    ip = ins.operands[0] as usize;
-                }
-            }
-        }
-        // print!("{} ", ip);
-        // _dump_stack(&stack);
-        ip += 1;
-    }
 }
 
 fn compile(program : &Vec<Instruction>, exec_file: &str, run_prog : bool) {
