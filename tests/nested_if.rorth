@@ -1,10 +1,10 @@
 420 420 = if
   0 if
-    32 .
+    32 dump
   else
-    42 .
+    42 dump
   end
 else
-  100 .
+  100 dump
 end
-42 .
+42 dump

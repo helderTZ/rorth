@@ -1,9 +1,9 @@
 55 while dup 50 > do
-  dup .
+  dup dump
   2 while dup 0 > do
-    dup .
+    dup dump
     1 -
   end
   1 -
 end
-69 .
+69 dump

@@ -1,16 +1,16 @@
 420 420 = if
-  1 .
+  1 dump
 end
-42 .
+42 dump
 
 420 430 = if
-  1 .
+  1 dump
 end
-42 .
+42 dump
 
 420 430 = if
-  1 .
+  1 dump
 else
-  0 .
+  0 dump
 end
-42 .
+42 dump
