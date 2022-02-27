@@ -277,7 +277,7 @@ fn parser(source_file : &str, tokens : &Vec<Token>) -> Vec<Instruction> {
         else if tok.tok == "shr"    { program.push(Instruction::new(Opcode::OP_SHR, vec![], ip)); }
         else if tok.tok == "bor"    { program.push(Instruction::new(Opcode::OP_BOR, vec![], ip)); }
         else if tok.tok == "band"   { program.push(Instruction::new(Opcode::OP_BAND, vec![], ip)); }
-        else if tok.tok == "."      { program.push(Instruction::new(Opcode::OP_DUMP, vec![], ip)); }
+        else if tok.tok == "dump"   { program.push(Instruction::new(Opcode::OP_DUMP, vec![], ip)); }
         else if tok.tok == "dup"    { program.push(Instruction::new(Opcode::OP_DUP, vec![], ip)); }
         else if tok.tok == "if" {
             program.push(Instruction::new(Opcode::OP_IF, vec![], ip));
