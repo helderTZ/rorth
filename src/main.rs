@@ -4,6 +4,7 @@ use std::io::Write;
 use std::process;
 use std::process::{Command, Stdio};
 use std::io;
+use std::io::BufRead;
 
 const NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -71,7 +72,8 @@ fn usage() {
     println!("    -h, --help                        Print this message");
     println!("    -b, --bytecode                    Dump bytecode to file");
     println!("\nSUBCOMMANDS:");
-    println!("    interpret <FILE>                  Interprets source file FILE");
+    println!("    interpret <FILE> [-d]             Interprets source file FILE");
+    println!("        -d, --debug                   Debug mode");
     println!("    compile <FILE> [-r] [-o OUT_FILE] Compiles source file FILE into native code");
     println!("        -r, --run                     Runs program after compiling");
     println!("        -o, --output                  Name of the executable (default: out)");
@@ -83,6 +85,7 @@ fn main() {
     let mut interp : bool = false;
     let mut run_prog : bool = false;
     let mut dump_bc : bool = false;
+    let mut debug_mode : bool = false;
     let mut exec_file: String = String::from("out");
     let mut source_file : String = String::from("");
     let mut source_file_next : bool = false;
@@ -113,6 +116,10 @@ fn main() {
         }
         if arg == "-o" || arg == "--output" {
             exec_file_next = true;
+            continue;
+        }
+        if arg == "-d" || arg == "--debug" {
+            debug_mode = true;
             continue;
         }
         if source_file_next {
@@ -148,7 +155,11 @@ fn main() {
     }
 
     if interp {
+        if debug_mode {
+            debug(&program);
+        } else {
         interpret(&program, &mut io::stdout());
+        }
     }
     if comp {
         compile(&program, &exec_file, run_prog);
@@ -201,9 +212,9 @@ fn _dump_crossref(stack: &Vec<usize>) {
 
 // debug function
 fn _dump_stack(stack: &Vec<i64>) {
-    print!("Stack:");
-    for (i, val) in stack.iter().enumerate() {
-        print!("({}, {}) ", i, val);
+    print!("Stack: ");
+    for val in stack.iter() {
+        print!("({}) ", val);
     }
     println!();
 }
@@ -367,142 +378,183 @@ fn parser(source_file : &str, tokens : &Vec<Token>) -> Vec<Instruction> {
     program
 }
 
+fn debug(program : &Vec<Instruction>) {
+    let mut stack : Vec<i64> = Vec::new();
+    let mut ip : usize = 0;
+    
+    let stdin = io::stdin();
+    print!("> ");
+    io::stdout().flush().expect("Unable to flush stdout");
+    for line in stdin.lock().lines() {
+        match line {
+            Err(_) => break,
+            Ok(s) => {
+                if s == "h" || s == "help" {
+                    println!("Possible commands: [n]ext, [e]xit, [s]tack, [l]ine, [p]rint ip, [b]ytecode")
+                } else if s == "n" || s == "n" {
+                    ip = interpret_single_instruction(&program, ip, &mut stack, &mut io::stdout());
+                } else if s == "e" || s == "exit" {
+                    break;
+                } else if s == "s" || s == "stack" {
+                    _dump_stack(&stack);
+                } else if s == "p" || s == "print" {
+                    println!("ip: {}", ip);
+                } else if s == "b" || s == "bytecode" {
+                    _dump_bytecode(&program);
+                } else if s == "l" || s == "line" {
+                    if ip > 0 {                 println!("    {:>3}   {:?}\t{:>?}", ip-1, program[ip-1].opcode, program[ip-1].operands); }
+                                                println!("--> {:>3}   {:?}\t{:>?}", ip,   program[ip].opcode, program[ip].operands);
+                    if ip + 1 < program.len() { println!("    {:>3}   {:?}\t{:>?}", ip+1, program[ip+1].opcode, program[ip+1].operands); }
+                } else if s == "" {
+
+                } else {
+                    println !("Unknown command: {}", s);
+                }
+                print!("> ");
+                io::stdout().flush().expect("Unable to flush stdout");
+            }
+        }
+    }
+    println!();
+}
+
 fn interpret<W: Write>(program : &Vec<Instruction>, stdout : &mut W) {
-    // _dump_bytecode(program);
     let mut stack : Vec<i64> = Vec::new();
     let mut ip = 0;
     while ip < program.len() {
-        let ins = &program[ip];
-        match ins.opcode {
-            Opcode::OP_PUSH => {
-                stack.push(ins.operands[0]);
-            },
-            Opcode::OP_ADD => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push(a+b);
-            },
-            Opcode::OP_SUB => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push(b-a);
-            },
-            Opcode::OP_MUL => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push(a*b);
-            },
-            Opcode::OP_DIV => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push(b/a);
-            },
-            Opcode::OP_NOT => {
-                let a = stack.pop().unwrap();
-                if a == 0 {
-                    stack.push(1);
-                } else if a == 1 {
-                    stack.push(0);
-                } else {
-                    eprintln!("[ERROR] @ip {}: Expected a boolen in the stack, found {}", ip, a);
-                    _dump_bytecode(&program);
-                    _dump_stack(&stack);
-                    process::exit(1);
-                }
-            },
-            Opcode::OP_EQ => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push(((a==b) as i32) as i64);
-            },
-            Opcode::OP_NE => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((a != b) as i64);
-            },
-            Opcode::OP_GT => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b > a) as i64);
-            },
-            Opcode::OP_GE => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b >= a) as i64);
-            },
-            Opcode::OP_LT => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b < a) as i64);
-            },
-            Opcode::OP_LE => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b <= a) as i64);
-            },
-            Opcode::OP_SHL => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b << a) as i64);
-            },
-            Opcode::OP_SHR => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b >> a) as i64);
-            },
-            Opcode::OP_BOR => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b | a) as i64);
-            },
-            Opcode::OP_BAND => {
-                let a = stack.pop().unwrap();
-                let b = stack.pop().unwrap();
-                stack.push((b & a) as i64);
-            },
-            Opcode::OP_DUP => {
-                let a = stack.pop().unwrap();
-                stack.push(a);
-                stack.push(a);
-            },
-            Opcode::OP_DUMP => {
-                if let Some(a) = stack.pop() {
-                    writeln!(stdout, "{}", a).unwrap();
-                } else {
-                    eprintln!("[ERROR] @ip {}: Tried to pop but stack was empty", ip);
-                    _dump_bytecode(&program);
-                    _dump_stack(&stack);
-                    process::exit(1);
-                }
+        ip = interpret_single_instruction(&program, ip, &mut stack, stdout);
+    }
+}
+
+fn interpret_single_instruction<W: Write>(program : &Vec<Instruction>, mut ip : usize, stack : &mut Vec<i64>, stdout : &mut W) -> usize {
+    let ins = &program[ip];
+    match ins.opcode {
+        Opcode::OP_PUSH => {
+            stack.push(ins.operands[0]);
+        },
+        Opcode::OP_ADD => {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            stack.push(a+b);
+        },
+        Opcode::OP_SUB => {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            stack.push(b-a);
+        },
+        Opcode::OP_MUL => {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            stack.push(a*b);
+        },
+        Opcode::OP_DIV => {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            stack.push(b/a);
+        },
+        Opcode::OP_NOT => {
+            let a = stack.pop().unwrap();
+            if a == 0 {
+                stack.push(1);
+            } else if a == 1 {
+                stack.push(0);
+            } else {
+                eprintln!("[ERROR] @ip {}: Expected a boolen in the stack, found {}", ip, a);
+                _dump_bytecode(&program);
+                _dump_stack(&stack);
+                process::exit(1);
             }
-            Opcode::OP_IF => {
-                let a = stack.pop().unwrap();
-                if a == 0 {
-                    ip = ins.operands[0] as usize;
-                }
-            },
-            Opcode::OP_ELSE => {
-                ip = ins.operands[0] as usize;
-            },
-            Opcode::OP_END => {
-                // if has one operand, it points to while
-                // if has no operands, it ends an if => falthrough
-                if ins.operands.len() == 1 {
-                    ip = ins.operands[0] as usize;
-                }
-            },
-            Opcode::OP_WHILE => { },
-            Opcode::OP_DO => {
-                let a = stack.pop().unwrap();
-                if a == 0 {
-                    ip = ins.operands[0] as usize;
-                }
+        },
+        Opcode::OP_EQ => {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            stack.push(((a==b) as i32) as i64);
+        },
+        Opcode::OP_NE => {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            stack.push((a != b) as i64);
+        },
+        Opcode::OP_GT => {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            stack.push((b > a) as i64);
+        },
+        Opcode::OP_GE => {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            stack.push((b >= a) as i64);
+        },
+        Opcode::OP_LT => {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            stack.push((b < a) as i64);
+        },
+        Opcode::OP_LE => {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            stack.push((b <= a) as i64);
+        },
+        Opcode::OP_SHL => {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            stack.push((b << a) as i64);
+        },
+        Opcode::OP_SHR => {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            stack.push((b >> a) as i64);
+        },
+        Opcode::OP_BOR => {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            stack.push((b | a) as i64);
+        },
+        Opcode::OP_BAND => {
+            let a = stack.pop().unwrap();
+            let b = stack.pop().unwrap();
+            stack.push((b & a) as i64);
+        },
+        Opcode::OP_DUP => {
+            let a = stack.pop().unwrap();
+            stack.push(a);
+            stack.push(a);
+        },
+        Opcode::OP_DUMP => {
+            if let Some(a) = stack.pop() {
+                writeln!(stdout, "{}", a).unwrap();
+            } else {
+                eprintln!("[ERROR] @ip {}: Tried to pop but stack was empty", ip);
+                _dump_bytecode(&program);
+                _dump_stack(&stack);
+                process::exit(1);
             }
         }
-        // print!("{} ", ip);
-        // _dump_stack(&stack);
-        ip += 1;
+        Opcode::OP_IF => {
+            let a = stack.pop().unwrap();
+            if a == 0 {
+                ip = ins.operands[0] as usize;
+            }
+        },
+        Opcode::OP_ELSE => {
+            ip = ins.operands[0] as usize;
+        },
+        Opcode::OP_END => {
+            // if has one operand, it points to while
+            // if has no operands, it ends an if => falthrough
+            if ins.operands.len() == 1 {
+                ip = ins.operands[0] as usize;
+            }
+        },
+        Opcode::OP_WHILE => { },
+        Opcode::OP_DO => {
+            let a = stack.pop().unwrap();
+            if a == 0 {
+                ip = ins.operands[0] as usize;
+            }
+        }
     }
+    ip + 1
 }
 
 fn compile(program : &Vec<Instruction>, exec_file: &str, run_prog : bool) {
